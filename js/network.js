@@ -25,18 +25,88 @@ window.BanBan.Network = (function () {
     listEl.innerHTML = '';
     State.playerRoster.forEach(p => {
       const span = document.createElement('span');
+      const isMe = State.isP2PConnected && p.id === State.myPeerId;
+      const meTag = isMe ? ' (나)' : '';
       if (p.role === 'P1') {
         span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold';
-        span.textContent = `🎨 1P ${p.nickname} (${p.score}점)`;
+        span.textContent = `🎨 1P ${p.nickname}${meTag} (${p.score}점)`;
       } else if (p.role === 'P2') {
         span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold';
-        span.textContent = `🕹️ 2P ${p.nickname} (${p.score}점)`;
+        span.textContent = `🕹️ 2P ${p.nickname}${meTag} (${p.score}점)`;
       } else {
         span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold';
-        span.textContent = `👀 ${p.nickname} (${p.score}점)`;
+        span.textContent = `👀 ${p.nickname}${meTag} (${p.score}점)`;
       }
       listEl.appendChild(span);
     });
+
+    // 우측 상단 내 점수 배지 동기화
+    const scoreEl = document.getElementById('score-text');
+    if (scoreEl) {
+      if (State.isP2PConnected) {
+        const me = State.playerRoster.find(p => p.id === State.myPeerId);
+        if (me) {
+          State.totalScore = me.score;
+        }
+      }
+      scoreEl.textContent = `${State.totalScore}점`;
+    }
+  }
+
+  // 라운드마다 플레이어 역할(P1 -> P2 -> SPECTATOR) 순환 로테이션
+  function rotatePlayerRoles() {
+    const roster = State.playerRoster;
+    if (roster.length < 2) return;
+
+    // 현재 역할 배열을 한 칸씩 순환 이동
+    const currentRoles = roster.map(p => p.role);
+    const lastRole = currentRoles.pop();
+    currentRoles.unshift(lastRole);
+
+    // P1, P2가 최소 1명씩 유지되도록 보장
+    if (!currentRoles.includes('P1')) currentRoles[0] = 'P1';
+    if (!currentRoles.includes('P2')) currentRoles[1 % currentRoles.length] = 'P2';
+
+    roster.forEach((p, idx) => {
+      p.role = currentRoles[idx];
+    });
+
+    applyMyRoleFromRoster();
+    renderPlayerRoster();
+  }
+
+  // 로스터 기준으로 내 조작 모드(P1 / P2 / SPECTATOR) 및 상태 배지 자동 적용
+  function applyMyRoleFromRoster() {
+    const p2pStatusText = document.getElementById('p2p-status-text');
+
+    if (State.isP2PConnected) {
+      const me = State.playerRoster.find(p => p.id === State.myPeerId);
+      if (!me) return;
+
+      if (me.role === 'P1') {
+        callbacks.onSetMode('P1', 'mode-p1');
+        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (🎨 1P 브러시)`;
+      } else if (me.role === 'P2') {
+        State.aiHelperEnabled = false;
+        callbacks.onUpdateAiButtonUI();
+        callbacks.onSetMode('P2', 'mode-p2');
+        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (🕹️ 2P 팔레트)`;
+      } else {
+        callbacks.onSetMode('SPECTATOR', 'mode-spec');
+        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (👀 구경꾼)`;
+      }
+    } else {
+      // 로컬 단일 플레이에서 P1만 조작 중이었다면 P2로, P2만 조작 중이었다면 P1로 로테이션 체험 지원
+      if (State.controlMode === 'P1') {
+        State.aiHelperEnabled = false;
+        callbacks.onUpdateAiButtonUI();
+        callbacks.onSetMode('P2', 'mode-p2');
+      } else if (State.controlMode === 'P2') {
+        State.aiHelperEnabled = true;
+        callbacks.onUpdateAiButtonUI();
+        callbacks.onSetMode('P1', 'mode-p1');
+      }
+    }
   }
 
   function sendNetworkPacket(payload) {
@@ -88,22 +158,37 @@ window.BanBan.Network = (function () {
     } else if (data.type === 'CHAT') {
       if (State.gameState === 'PLAYING' && callbacks.normalizeAnswer(data.text) === callbacks.normalizeAnswer(State.currentPrompt.word)) {
         callbacks.onAddChatMessage('', `🎊 [${data.sender}]님이 정답 [${State.currentPrompt.word}]을 맞혔습니다!`, 'correct');
-        callbacks.onEndRound(true, data.sender);
+        callbacks.onEndRound(true, data.sender, data.timeLeft);
       } else {
         callbacks.onAddChatMessage(data.sender, data.text);
       }
     } else if (data.type === 'ROUND_WIN') {
       if (State.gameState === 'PLAYING') {
+        if (data.roster) {
+          State.playerRoster = data.roster;
+          renderPlayerRoster();
+        }
         callbacks.onAddChatMessage('', `🎊 [${data.winnerName}]님이 정답 [${State.currentPrompt.word}]을 맞혔습니다!`, 'correct');
-        callbacks.onEndRound(true, data.winnerName);
+        callbacks.onEndRound(true, data.winnerName, data.timeLeft, true);
       }
     } else if (data.type === 'NEXT_ROUND') {
       State.currentRound = data.round || (State.currentRound + 1);
-      callbacks.onStartRound();
+      if (typeof data.promptIndex === 'number') {
+        State.currentPromptIndex = data.promptIndex;
+      }
+      if (data.roster) {
+        State.playerRoster = data.roster;
+        applyMyRoleFromRoster();
+        renderPlayerRoster();
+      } else {
+        rotatePlayerRoles();
+      }
+      callbacks.onStartRound(true);
     } else if (data.type === 'CLEAR') {
       Scene3D.clearCanvas();
     } else if (data.type === 'ROSTER_SYNC') {
       State.playerRoster = data.roster || State.playerRoster;
+      applyMyRoleFromRoster();
       renderPlayerRoster();
     }
   }
@@ -161,17 +246,18 @@ window.BanBan.Network = (function () {
       showMpFeedback(`⏳ 방 [${State.currentRoomCode}] 생성 중...`);
 
       peer = new Peer(hostPeerId);
-      peer.on('open', () => {
+      peer.on('open', (id) => {
+        State.myPeerId = id;
         State.isP2PConnected = true;
         State.isP2PHost = true;
-        callbacks.onSetMode('P1', 'mode-p1'); // 방장은 1P 브러시 러너 담당
+        callbacks.onSetMode('P1', 'mode-p1'); // 방장은 첫 라운드 1P 브러시 러너 담당
 
-        State.playerRoster = [{ id: 'host', nickname: State.myNickname, role: 'P1', score: 0 }];
+        State.playerRoster = [{ id: State.myPeerId, nickname: State.myNickname, role: 'P1', score: 0 }];
         renderPlayerRoster();
 
         p2pBadge.classList.remove('hidden');
         p2pBadge.classList.add('flex');
-        p2pStatusText.textContent = `방 코드: ${State.currentRoomCode} (1P 호스트)`;
+        p2pStatusText.textContent = `방 코드: ${State.currentRoomCode} (🎨 1P 브러시)`;
 
         showMpFeedback(`✅ 방 [${State.currentRoomCode}] 개설 완료! 친구가 입장하면 자동으로 2P/구경꾼이 배정됩니다.`);
         callbacks.onAddChatMessage('', `🌐 멀티플레이 방 [${State.currentRoomCode}]이 개설되었습니다! 친구에게 방 코드를 공유하세요.`, 'system');
@@ -194,8 +280,10 @@ window.BanBan.Network = (function () {
 
           conn.send({
             type: 'WELCOME',
+            peerId: conn.peer,
             assignedRole,
             round: State.currentRound,
+            promptIndex: State.currentPromptIndex,
             roster: State.playerRoster
           });
           sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster });
@@ -229,7 +317,8 @@ window.BanBan.Network = (function () {
       showMpFeedback(`⏳ 방 [${State.currentRoomCode}]에 연결 중...`);
 
       peer = new Peer();
-      peer.on('open', () => {
+      peer.on('open', (id) => {
+        State.myPeerId = id;
         const conn = peer.connect(targetHostId, { metadata: { nickname: State.myNickname } });
         hostConnection = conn;
 
@@ -241,19 +330,16 @@ window.BanBan.Network = (function () {
 
         conn.on('data', (data) => {
           if (data.type === 'WELCOME') {
+            if (data.peerId) State.myPeerId = data.peerId;
             State.currentRound = data.round || 1;
+            if (typeof data.promptIndex === 'number') {
+              State.currentPromptIndex = data.promptIndex;
+              State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
+            }
             State.playerRoster = data.roster || State.playerRoster;
+            applyMyRoleFromRoster();
             renderPlayerRoster();
 
-            if (data.assignedRole === 'P2') {
-              State.aiHelperEnabled = false;
-              callbacks.onUpdateAiButtonUI();
-              callbacks.onSetMode('P2', 'mode-p2');
-              p2pStatusText.textContent = `방: ${State.currentRoomCode} (2P 팔레트)`;
-            } else {
-              callbacks.onSetMode('SPECTATOR', 'mode-spec');
-              p2pStatusText.textContent = `방: ${State.currentRoomCode} (구경꾼)`;
-            }
             p2pBadge.classList.remove('hidden');
             p2pBadge.classList.add('flex');
             multiModal.classList.add('hidden');
@@ -273,11 +359,15 @@ window.BanBan.Network = (function () {
         showMpFeedback(`⚠️ 방 [${State.currentRoomCode}]을 찾을 수 없습니다. 방 코드를 확인하세요! (${err.type})`, true);
       });
     });
+
+    renderPlayerRoster();
   }
 
   return {
     initNetworkAndLobby,
     sendNetworkPacket,
-    renderPlayerRoster
+    renderPlayerRoster,
+    rotatePlayerRoles,
+    applyMyRoleFromRoster
   };
 })();

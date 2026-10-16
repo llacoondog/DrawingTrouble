@@ -3,19 +3,65 @@
 // ==========================================
 window.BanBan = window.BanBan || {};
 
+// 한글 초성 자동 추출 헬퍼 함수
+function extractChosung(str) {
+  const CHOSUNG_LIST = [
+    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
+    'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+  ];
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 0xAC00;
+    if (code >= 0 && code <= 11171) {
+      const chosungIdx = Math.floor(code / 588);
+      result += CHOSUNG_LIST[chosungIdx];
+    } else {
+      result += str[i];
+    }
+  }
+  return result;
+}
+
+const RAW_WORDS = [
+  '선글라스 낀 파인애플',
+  '자전거 타는 문어',
+  '근육질 피카츄',
+  '화염방사기 쏘는 눈사람',
+  '우주복 입은 고양이',
+  '스케이트보드 타는 펭귄',
+  '노래방에서 열창하는 사자',
+  '붕어빵 굽는 외계인',
+  '정장 입은 바나나',
+  '번지점프하는 햄스터',
+  '마라탕 먹는 공룡',
+  '하늘을 나는 코끼리',
+  '기타 치는 선인장',
+  '런닝머신 뛰는 거북이',
+  '왕관 쓴 개구리',
+  '서핑하는 북극곰',
+  '라떼아트 하는 로봇',
+  '모자에서 나오는 토끼',
+  '짜장면 먹는 유령',
+  '낙하산 탄 강아지',
+  '권투하는 캥거루',
+  '셀카 찍는 모나리자',
+  '훌라후프 돌리는 기린',
+  '목욕탕 간 악어'
+];
+
 window.BanBan.Config = {
   PEER_PREFIX: 'banban3d-room-',
   CANVAS_SIZE: 12,
   VIEW_SIZE: 11.2,
+  COOP_BONUS_SCORE: 80,
 
-  // 제시어 단어장
-  WORD_POOL: [
-    { word: '선글라스 낀 파인애플', hint: 'ㅅㄱㄹㅅ ㄲ ㅍㅇㅇㅍ' },
-    { word: '자전거 타는 문어', hint: 'ㅈㅈㄱ ㅌㄴ ㅁㅇ' },
-    { word: '근육질 피카츄', hint: 'ㄱㅇㅈ ㅍㅋㅊ' },
-    { word: '화염방사기 쏘는 눈사람', hint: 'ㅎㅇㅂㅅㄱ ㅆㄴ ㄴㅅㄹ' },
-    { word: '우주복 입은 고양이', hint: 'ㅇㅈㅂ ㅇㅇ ㄱㅇㅇ' }
-  ],
+  extractChosung,
+
+  // 제시어 단어장 (초성 자동 생성)
+  WORD_POOL: RAW_WORDS.map(word => ({
+    word,
+    hint: extractChosung(word)
+  })),
 
   // 봇 구경꾼 이름 및 추리 대사
   BOT_NAMES: ['세훈', '지나언니', '길가는똥손', '화실스파이'],
@@ -50,6 +96,7 @@ window.BanBan.State = {
   currentRound: 1,
   totalScore: 0,
   timeLeft: 60,
+  currentPromptIndex: 0,
   currentPrompt: window.BanBan.Config.WORD_POOL[0],
   gameState: 'PLAYING', // 'PLAYING' | 'ROUND_END'
   isTypingChat: false,
@@ -68,6 +115,7 @@ window.BanBan.State = {
   activeColorName: '발판 대기',
 
   // 멀티플레이 상태
+  myPeerId: 'local-1',
   isP2PConnected: false,
   isP2PHost: false,
   myNickname: '열정화가',

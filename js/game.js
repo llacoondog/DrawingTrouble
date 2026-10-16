@@ -98,19 +98,47 @@ window.onload = function () {
     return str.replace(/\s+/g, '').toLowerCase();
   }
 
+  // 정답자 점수(100 + 남은시간*2) 및 1P/2P 협동 보너스(+80점) 부여
+  function awardRoundScores(winnerName, earnedScore, coopBonus) {
+    let winnerMatched = false;
+    State.playerRoster.forEach(p => {
+      if (p.role === 'P1' || p.role === 'P2') {
+        p.score += coopBonus;
+      }
+      if (p.nickname === winnerName) {
+        p.score += earnedScore;
+        winnerMatched = true;
+      }
+    });
+
+    // 로컬 싱글/탭 테스트에서 '나'로 정답을 맞혔을 때 로스터에 반영
+    if (!winnerMatched && !State.isP2PConnected) {
+      const p1Entry = State.playerRoster.find(p => p.role === 'P1');
+      if (p1Entry) p1Entry.score += earnedScore;
+    }
+
+    State.totalScore += earnedScore;
+    Network.renderPlayerRoster();
+  }
+
   function handleSendChat() {
     const rawText = chatInputEl.value.trim();
     if (!rawText) return;
     chatInputEl.value = '';
 
     const senderName = State.isP2PConnected ? State.myNickname : '나';
-    Network.sendNetworkPacket({ type: 'CHAT', sender: senderName, text: rawText });
 
     if (State.gameState === 'PLAYING' && normalizeAnswer(rawText) === normalizeAnswer(State.currentPrompt.word)) {
       addChatMessage('', `🎊 [${senderName}]님이 정답 [${State.currentPrompt.word}] 판정 성공!`, 'correct');
-      endRound(true, senderName);
-      Network.sendNetworkPacket({ type: 'ROUND_WIN', winnerName: senderName });
+      endRound(true, senderName, State.timeLeft, false);
+      Network.sendNetworkPacket({
+        type: 'ROUND_WIN',
+        winnerName: senderName,
+        timeLeft: State.timeLeft,
+        roster: State.playerRoster
+      });
     } else {
+      Network.sendNetworkPacket({ type: 'CHAT', sender: senderName, text: rawText, timeLeft: State.timeLeft });
       addChatMessage(senderName, rawText);
     }
   }
@@ -121,10 +149,13 @@ window.onload = function () {
   });
 
   let timerInterval = null;
-  function startRound() {
+  function startRound(isFromNetwork = false) {
     State.gameState = 'PLAYING';
     State.timeLeft = 60;
-    State.currentPrompt = Config.WORD_POOL[(State.currentRound - 1) % Config.WORD_POOL.length];
+    if (!isFromNetwork) {
+      State.currentPromptIndex = (State.currentRound - 1) % Config.WORD_POOL.length;
+    }
+    State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
 
     document.getElementById('round-text').textContent = `ROUND ${State.currentRound}`;
     timerTextEl.textContent = `${State.timeLeft}s`;
@@ -142,7 +173,13 @@ window.onload = function () {
     State.isPenDown = false;
     State.aiTargetX = -6.2;
 
-    addChatMessage('', `🎨 ROUND ${State.currentRound} 시작! WASD로 도화지를 달리며 그리세요!`, 'system');
+    const p1Player = State.playerRoster.find(p => p.role === 'P1');
+    const p2Player = State.playerRoster.find(p => p.role === 'P2');
+    const roleSummary = (p1Player && p2Player)
+      ? ` (🎨 1P: ${p1Player.nickname} / 🕹️ 2P: ${p2Player.nickname})`
+      : '';
+
+    addChatMessage('', `🎨 ROUND ${State.currentRound} 시작!${roleSummary}`, 'system');
 
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
@@ -152,10 +189,13 @@ window.onload = function () {
 
       if (State.timeLeft <= 10) timerTextEl.classList.add('urgent-timer');
 
+      // 30초 남았을 때 초성 힌트 자동 출력
       if (State.timeLeft === 30) {
-        addChatMessage('', `💡 [초성 힌트] ${State.currentPrompt.hint}`, 'hint');
+        const hintText = State.currentPrompt.hint || Config.extractChosung(State.currentPrompt.word);
+        addChatMessage('', `💡 [초성 힌트] ${hintText}`, 'hint');
       }
 
+      // 가상 봇 구경꾼들의 유쾌한 추리 채팅
       const botToggle = document.getElementById('bot-toggle');
       if (botToggle && botToggle.checked && State.timeLeft > 5 && State.timeLeft % 13 === 0) {
         const botName = Config.BOT_NAMES[Math.floor(Math.random() * Config.BOT_NAMES.length)];
@@ -165,12 +205,12 @@ window.onload = function () {
 
       if (State.timeLeft <= 0) {
         addChatMessage('', `⏰ 시간 초과! 정답은 [${State.currentPrompt.word}] 였습니다.`, 'system');
-        endRound(false, null);
+        endRound(false, null, 0, false);
       }
     }, 1000);
   }
 
-  function endRound(isSuccess, winnerName) {
+  function endRound(isSuccess, winnerName, remainSeconds = State.timeLeft, skipRosterAward = false) {
     State.gameState = 'ROUND_END';
     if (timerInterval) clearInterval(timerInterval);
 
@@ -179,13 +219,27 @@ window.onload = function () {
     const modalDesc = document.getElementById('modal-desc');
 
     if (isSuccess) {
-      const earned = 100 + State.timeLeft * 2;
-      State.totalScore += earned;
-      document.getElementById('score-text').textContent = `${State.totalScore}점`;
+      const effectiveTime = typeof remainSeconds === 'number' ? remainSeconds : State.timeLeft;
+      const earned = 100 + effectiveTime * 2;
+      const coopBonus = Config.COOP_BONUS_SCORE;
+
+      if (!skipRosterAward) {
+        awardRoundScores(winnerName || '나', earned, coopBonus);
+      } else {
+        Network.renderPlayerRoster();
+      }
+
+      const p1Player = State.playerRoster.find(p => p.role === 'P1');
+      const p2Player = State.playerRoster.find(p => p.role === 'P2');
+      const coopNames = [p1Player?.nickname, p2Player?.nickname].filter(Boolean).join(' & ');
+
       Scene3D.spawnConfettiExplosion();
       modalTitle.textContent = '🎉 정답 판정 성공!';
       modalTitle.className = 'text-2xl font-black text-emerald-400 mb-1';
-      modalDesc.innerHTML = `<b>${winnerName || '플레이어'}</b>님 정답! (<b>+${earned}점</b>)<br>제시어: <b class="text-amber-300">${State.currentPrompt.word}</b>`;
+      modalDesc.innerHTML =
+        `👀 정답자 <b>${winnerName || '플레이어'}</b>: <b class="text-emerald-400">+${earned}점</b><br>` +
+        `🤝 1P·2P 협동 보너스 (${coopNames || '1P & 2P'}): <b class="text-sky-400">+${coopBonus}점</b><br>` +
+        `제시어: <b class="text-amber-300">${State.currentPrompt.word}</b>`;
     } else {
       modalTitle.textContent = '⏰ 아쉽게 시간 초과!';
       modalTitle.className = 'text-2xl font-black text-rose-500 mb-1';
@@ -201,8 +255,18 @@ window.onload = function () {
 
   document.getElementById('btn-next-round').addEventListener('click', () => {
     State.currentRound++;
-    startRound();
-    Network.sendNetworkPacket({ type: 'NEXT_ROUND', round: State.currentRound });
+    State.currentPromptIndex = (State.currentRound - 1) % Config.WORD_POOL.length;
+
+    // 라운드마다 역할(1P / 2P / 구경꾼) 순환 로테이션 수행
+    Network.rotatePlayerRoles();
+    startRound(false);
+
+    Network.sendNetworkPacket({
+      type: 'NEXT_ROUND',
+      round: State.currentRound,
+      promptIndex: State.currentPromptIndex,
+      roster: State.playerRoster
+    });
   });
 
   document.getElementById('btn-clear').addEventListener('click', () => {
@@ -382,7 +446,7 @@ window.onload = function () {
       p1Obj.tipMat.color.set(State.activeColorHex || '#ffffff');
       p2Obj.tipMat.color.set(State.activeColorHex || '#63666f');
 
-      if (State.controlMode === 'BOTH' || State.controlMode === 'P2' || State.isP2PHost) {
+      if (State.controlMode === 'BOTH' || State.controlMode === 'P2' || (State.isP2PHost && State.aiHelperEnabled)) {
         Network.sendNetworkPacket({
           type: 'MOVE_P2',
           x: p2Obj.group.position.x,
@@ -401,6 +465,6 @@ window.onload = function () {
   }
 
   // 게임 시작!
-  startRound();
+  startRound(false);
   animate();
 };
