@@ -154,16 +154,16 @@
     </div>
   </div>
 
-  <!-- 🌐 무료 P2P 멀티플레이 방 만들기 / 입장 모달 -->
+  <!-- 🌐 무료 P2P & Socket.io 하이브리드 멀티플레이 방 만들기 / 입장 모달 -->
   <div id="multi-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
     <div class="modal-pop bg-[#1b1f2b] border border-purple-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-left relative">
       <button id="btn-close-multi" class="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold bg-white/5 px-2.5 py-1 rounded-lg">✕ 닫기</button>
       <div class="flex items-center gap-2 mb-1">
-        <span class="bg-purple-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-lg">100% 무료 P2P</span>
+        <span id="mp-mode-badge" class="bg-purple-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-lg">100% 무료 P2P</span>
         <h2 class="text-xl font-black text-white">멀티플레이 로비</h2>
       </div>
-      <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-        별도 서버 결제 없이 <b>WebRTC(PeerJS)</b>로 친구 브라우저와 직접 연결합니다. 방 코드를 정해 방을 만들거나 친구의 방 코드를 입력해 입장하세요!
+      <p id="mp-mode-desc" class="text-xs text-slate-400 mb-4 leading-relaxed">
+        유료 호스팅 없이도 <b>WebRTC(PeerJS)</b> 또는 <b>경량 Node 서버(Socket.io)</b>를 자동 감지해 연결합니다. 방 코드나 초대 링크를 친구에게 보내 함께 플레이하세요!
       </p>
 
       <div class="space-y-3 mb-4">
@@ -173,9 +173,10 @@
         </div>
         <div>
           <label class="block text-xs font-bold text-slate-300 mb-1">방 코드 (영문/숫자 4~8자리)</label>
-          <div class="flex gap-2">
-            <input id="mp-roomcode" type="text" maxlength="10" placeholder="예: PARTY7" value="PARTY7" class="flex-1 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm font-extrabold tracking-wider text-amber-300 uppercase outline-none" />
-            <button id="btn-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 rounded-xl transition">코드 복사</button>
+          <div class="flex gap-1.5">
+            <input id="mp-roomcode" type="text" maxlength="10" placeholder="예: PARTY7" value="PARTY7" class="flex-1 min-w-0 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm font-extrabold tracking-wider text-amber-300 uppercase outline-none" />
+            <button id="btn-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">코드 복사</button>
+            <button id="btn-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">🔗 링크 복사</button>
           </div>
         </div>
       </div>

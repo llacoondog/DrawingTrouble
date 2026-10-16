@@ -164,6 +164,16 @@ window.BanBan.Scene3D = (function () {
     State.p1State.prevZ = null;
   }
 
+  function loadCanvasFromDataURL(dataUrl) {
+    if (!dataUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, drawCanvas.width, drawCanvas.height);
+      canvasTexture.needsUpdate = true;
+    };
+    img.src = dataUrl;
+  }
+
   function createJellyCharacter(bodyColor, roleType) {
     const root = new THREE.Group();
     const animGroup = new THREE.Group();
@@ -532,6 +542,7 @@ window.BanBan.Scene3D = (function () {
   return {
     initScene,
     clearCanvas,
+    loadCanvasFromDataURL,
     updateCharacterVisuals,
     spawnPaintSplatter,
     spawnPadRipple,

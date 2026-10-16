@@ -1,0 +1,13 @@
+{
+  "name": "banban-moomani-3d",
+  "version": "1.0.0",
+  "description": "반반 무마니 3D - 3D 쿼터뷰 실시간 협동 피지컬 드로잉 파티게임 (P2P & Socket.io 하이브리드)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

@@ -1,5 +1,7 @@
 // ==========================================
-// 반반 무마니 3D - BroadcastChannel 및 PeerJS P2P 네트워크 (network.js)
+// 반반 무마니 3D - 하이브리드 멀티플레이 네트워크 (network.js)
+// 1) 무설치/서버비 0원: PeerJS(WebRTC) P2P 모드 + BroadcastChannel 탭 연동
+// 2) 선택 구동 서버: Node.js + Socket.io(server.js) 감지 시 자동 전환
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -10,6 +12,11 @@ window.BanBan.Network = (function () {
   let peer = null;
   let hostConnection = null;
   const guestConnections = [];
+
+  // Socket.io 서버 연결 상태 (server.js 구동 시 자동 활성화)
+  let socketIoClient = null;
+  let isSocketServerAvailable = false;
+
   let callbacks = {
     onAddChatMessage: () => {},
     onEndRound: () => {},
@@ -58,12 +65,10 @@ window.BanBan.Network = (function () {
     const roster = State.playerRoster;
     if (roster.length < 2) return;
 
-    // 현재 역할 배열을 한 칸씩 순환 이동
     const currentRoles = roster.map(p => p.role);
     const lastRole = currentRoles.pop();
     currentRoles.unshift(lastRole);
 
-    // P1, P2가 최소 1명씩 유지되도록 보장
     if (!currentRoles.includes('P1')) currentRoles[0] = 'P1';
     if (!currentRoles.includes('P2')) currentRoles[1 % currentRoles.length] = 'P2';
 
@@ -83,20 +88,20 @@ window.BanBan.Network = (function () {
       const me = State.playerRoster.find(p => p.id === State.myPeerId);
       if (!me) return;
 
+      const modePrefix = isSocketServerAvailable ? '서버방' : 'P2P방';
       if (me.role === 'P1') {
         callbacks.onSetMode('P1', 'mode-p1');
-        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (🎨 1P 브러시)`;
+        if (p2pStatusText) p2pStatusText.textContent = `${modePrefix}: ${State.currentRoomCode} (🎨 1P 브러시)`;
       } else if (me.role === 'P2') {
         State.aiHelperEnabled = false;
         callbacks.onUpdateAiButtonUI();
         callbacks.onSetMode('P2', 'mode-p2');
-        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (🕹️ 2P 팔레트)`;
+        if (p2pStatusText) p2pStatusText.textContent = `${modePrefix}: ${State.currentRoomCode} (🕹️ 2P 팔레트)`;
       } else {
         callbacks.onSetMode('SPECTATOR', 'mode-spec');
-        if (p2pStatusText) p2pStatusText.textContent = `방: ${State.currentRoomCode} (👀 구경꾼)`;
+        if (p2pStatusText) p2pStatusText.textContent = `${modePrefix}: ${State.currentRoomCode} (👀 구경꾼)`;
       }
     } else {
-      // 로컬 단일 플레이에서 P1만 조작 중이었다면 P2로, P2만 조작 중이었다면 P1로 로테이션 체험 지원
       if (State.controlMode === 'P1') {
         State.aiHelperEnabled = false;
         callbacks.onUpdateAiButtonUI();
@@ -114,7 +119,14 @@ window.BanBan.Network = (function () {
     if (netChannel) {
       try { netChannel.postMessage(payload); } catch (e) {}
     }
-    // 2) PeerJS P2P 원격 친구들에게 전송
+
+    // 2) Socket.io 서버 모드가 활성화된 경우
+    if (State.isP2PConnected && isSocketServerAvailable && socketIoClient) {
+      socketIoClient.emit('PACKET', payload);
+      return;
+    }
+
+    // 3) PeerJS 무서버 P2P 원격 친구들에게 전송
     if (State.isP2PConnected) {
       if (State.isP2PHost) {
         guestConnections.forEach(conn => {
@@ -131,8 +143,8 @@ window.BanBan.Network = (function () {
   function handleIncomingPacket(data, sourceConn = null) {
     if (!data) return;
 
-    // 호스트인 경우 게스트가 보낸 패킷을 다른 게스트들에게도 릴레이
-    if (State.isP2PHost && sourceConn) {
+    // PeerJS P2P 호스트인 경우 게스트가 보낸 패킷을 다른 게스트들에게도 릴레이
+    if (!isSocketServerAvailable && State.isP2PHost && sourceConn) {
       guestConnections.forEach(c => {
         if (c !== sourceConn && c.open) {
           try { c.send(data); } catch (e) {}
@@ -140,7 +152,7 @@ window.BanBan.Network = (function () {
       });
     }
 
-    const { p1Obj, p2Obj } = Scene3D.getSceneObjects();
+    const { p1Obj, p2Obj, drawCanvas } = Scene3D.getSceneObjects();
 
     if (data.type === 'MOVE_P1' && State.controlMode !== 'P1') {
       const prevX = p1Obj.group.position.x;
@@ -188,9 +200,78 @@ window.BanBan.Network = (function () {
       Scene3D.clearCanvas();
     } else if (data.type === 'ROSTER_SYNC') {
       State.playerRoster = data.roster || State.playerRoster;
+      const hasHumanP2 = State.playerRoster.some(p => p.role === 'P2' && p.id !== 'local-2');
+      if (hasHumanP2 && State.aiHelperEnabled) {
+        State.aiHelperEnabled = false;
+        callbacks.onUpdateAiButtonUI();
+      }
       applyMyRoleFromRoster();
       renderPlayerRoster();
+      if (data.joinNotice) callbacks.onAddChatMessage('', data.joinNotice, 'system');
+      if (data.leaveNotice) callbacks.onAddChatMessage('', data.leaveNotice, 'system');
+    } else if (data.type === 'REQUEST_CANVAS_SYNC') {
+      // 서버가 중도 입장자를 위해 현재 캔버스 스냅샷을 요청한 경우
+      sendNetworkPacket({
+        type: 'CANVAS_SYNC',
+        targetPeerId: data.targetPeerId,
+        dataUrl: drawCanvas.toDataURL('image/png')
+      });
+    } else if (data.type === 'CANVAS_SYNC' && data.dataUrl) {
+      Scene3D.loadCanvasFromDataURL(data.dataUrl);
     }
+  }
+
+  // server.js(Socket.io)가 실행 중인지 자동으로 감지하여 로드
+  function tryDetectSocketServer(onDetected) {
+    if (window.location.protocol === 'file:') return;
+    const script = document.createElement('script');
+    script.src = '/socket.io/socket.io.js';
+    script.async = true;
+    script.onload = () => {
+      if (typeof window.io === 'function') {
+        isSocketServerAvailable = true;
+        onDetected();
+      }
+    };
+    script.onerror = () => {
+      isSocketServerAvailable = false;
+    };
+    document.head.appendChild(script);
+  }
+
+  function connectViaSocketServer(isHostIntent, showMpFeedback, multiModal, p2pBadge) {
+    if (!socketIoClient) {
+      socketIoClient = window.io();
+      socketIoClient.on('PACKET', (data) => {
+        if (data.type === 'WELCOME') {
+          State.myPeerId = data.peerId;
+          State.isP2PConnected = true;
+          State.isP2PHost = isHostIntent;
+          State.currentRound = data.round || 1;
+          if (typeof data.promptIndex === 'number') {
+            State.currentPromptIndex = data.promptIndex;
+            State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
+          }
+          State.playerRoster = data.roster || State.playerRoster;
+          applyMyRoleFromRoster();
+          renderPlayerRoster();
+
+          p2pBadge.classList.remove('hidden');
+          p2pBadge.classList.add('flex');
+          multiModal.classList.add('hidden');
+          multiModal.classList.remove('flex');
+        } else {
+          handleIncomingPacket(data, null);
+        }
+      });
+    }
+
+    showMpFeedback(`⏳ 서버 방 [${State.currentRoomCode}]에 접속 중...`);
+    socketIoClient.emit('JOIN_ROOM', {
+      roomCode: State.currentRoomCode,
+      nickname: State.myNickname,
+      isHostIntent
+    });
   }
 
   function initNetworkAndLobby(cb) {
@@ -207,12 +288,34 @@ window.BanBan.Network = (function () {
     const mpFeedback = document.getElementById('mp-feedback');
     const p2pBadge = document.getElementById('p2p-status-badge');
     const p2pStatusText = document.getElementById('p2p-status-text');
+    const modeBadge = document.getElementById('mp-mode-badge');
+
+    // Socket.io 서버 구동 여부 자동 감지
+    tryDetectSocketServer(() => {
+      if (modeBadge) {
+        modeBadge.textContent = '⚡ Socket.io 서버 연동됨';
+        modeBadge.className = 'bg-emerald-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-lg';
+      }
+    });
 
     function showMpFeedback(msg, isError = false) {
       mpFeedback.textContent = msg;
       mpFeedback.className = isError
         ? 'text-xs font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 rounded-xl px-3 py-2 mb-4 block'
         : 'text-xs font-semibold text-sky-300 bg-sky-500/15 border border-sky-500/30 rounded-xl px-3 py-2 mb-4 block';
+    }
+
+    // URL 쿼리 파라미터(?room=PARTY7) 감지 시 자동으로 방 코드 입력 및 로비 모달 오픈
+    const urlParams = new URLSearchParams(window.location.search);
+    const invitedRoom = urlParams.get('room');
+    if (invitedRoom) {
+      const cleanInvited = invitedRoom.trim().toUpperCase().slice(0, 10);
+      const roomInput = document.getElementById('mp-roomcode');
+      if (roomInput) roomInput.value = cleanInvited;
+      State.currentRoomCode = cleanInvited;
+      multiModal.classList.remove('hidden');
+      multiModal.classList.add('flex');
+      showMpFeedback(`💌 초대 링크로 접속하셨습니다! 닉네임을 확인하고 [🚀 친구 방 입장하기]를 눌러주세요.`);
     }
 
     document.getElementById('btn-open-multi').addEventListener('click', () => {
@@ -227,40 +330,66 @@ window.BanBan.Network = (function () {
 
     document.getElementById('btn-copy-code').addEventListener('click', () => {
       const codeInput = document.getElementById('mp-roomcode');
-      codeInput.select();
-      document.execCommand('copy');
-      showMpFeedback(`📋 방 코드 [${codeInput.value.toUpperCase()}]가 복사되었습니다! 친구에게 알려주세요.`);
+      const codeVal = (codeInput.value || 'PARTY7').trim().toUpperCase();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(codeVal);
+      } else {
+        codeInput.select();
+        document.execCommand('copy');
+      }
+      showMpFeedback(`📋 방 코드 [${codeVal}]가 복사되었습니다! 친구에게 알려주세요.`);
     });
+
+    // 초대 링크(?room=코드) 원클릭 복사
+    const btnCopyLink = document.getElementById('btn-copy-link');
+    if (btnCopyLink) {
+      btnCopyLink.addEventListener('click', () => {
+        const codeInput = document.getElementById('mp-roomcode');
+        const codeVal = (codeInput.value || 'PARTY7').trim().toUpperCase();
+        const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(codeVal)}`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(inviteUrl);
+        }
+        showMpFeedback(`🔗 초대 링크가 복사되었습니다! 카톡이나 디스코드에 붙여넣어 친구를 바로 초대하세요.`);
+      });
+    }
 
     // [방 만들기 - 1P 호스트]
     document.getElementById('btn-host-room').addEventListener('click', () => {
+      State.myNickname = (document.getElementById('mp-nickname').value || '방장화가').trim();
+      State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
+
+      // Socket.io 서버가 켜져 있으면 Socket.io 방 생성으로 처리
+      if (isSocketServerAvailable && typeof window.io === 'function') {
+        connectViaSocketServer(true, showMpFeedback, multiModal, p2pBadge);
+        return;
+      }
+
       if (typeof Peer === 'undefined') {
         showMpFeedback('PeerJS 라이브러리를 불러오지 못했습니다.', true);
         return;
       }
-      State.myNickname = (document.getElementById('mp-nickname').value || '방장화가').trim();
-      State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
       const hostPeerId = Config.PEER_PREFIX + State.currentRoomCode;
 
       if (peer) peer.destroy();
-      showMpFeedback(`⏳ 방 [${State.currentRoomCode}] 생성 중...`);
+      showMpFeedback(`⏳ 무서버 P2P 방 [${State.currentRoomCode}] 생성 중...`);
 
       peer = new Peer(hostPeerId);
       peer.on('open', (id) => {
         State.myPeerId = id;
         State.isP2PConnected = true;
         State.isP2PHost = true;
-        callbacks.onSetMode('P1', 'mode-p1'); // 방장은 첫 라운드 1P 브러시 러너 담당
+        callbacks.onSetMode('P1', 'mode-p1');
 
         State.playerRoster = [{ id: State.myPeerId, nickname: State.myNickname, role: 'P1', score: 0 }];
         renderPlayerRoster();
 
         p2pBadge.classList.remove('hidden');
         p2pBadge.classList.add('flex');
-        p2pStatusText.textContent = `방 코드: ${State.currentRoomCode} (🎨 1P 브러시)`;
+        p2pStatusText.textContent = `P2P방: ${State.currentRoomCode} (🎨 1P 브러시)`;
 
-        showMpFeedback(`✅ 방 [${State.currentRoomCode}] 개설 완료! 친구가 입장하면 자동으로 2P/구경꾼이 배정됩니다.`);
-        callbacks.onAddChatMessage('', `🌐 멀티플레이 방 [${State.currentRoomCode}]이 개설되었습니다! 친구에게 방 코드를 공유하세요.`, 'system');
+        showMpFeedback(`✅ 방 [${State.currentRoomCode}] 개설 완료! 코드나 초대 링크를 친구에게 공유하세요.`);
+        callbacks.onAddChatMessage('', `🌐 무서버 P2P 방 [${State.currentRoomCode}]이 개설되었습니다!`, 'system');
       });
 
       peer.on('connection', (conn) => {
@@ -278,13 +407,15 @@ window.BanBan.Network = (function () {
           State.playerRoster.push({ id: conn.peer, nickname: guestName, role: assignedRole, score: 0 });
           renderPlayerRoster();
 
+          const { drawCanvas } = Scene3D.getSceneObjects();
           conn.send({
             type: 'WELCOME',
             peerId: conn.peer,
             assignedRole,
             round: State.currentRound,
             promptIndex: State.currentPromptIndex,
-            roster: State.playerRoster
+            roster: State.playerRoster,
+            canvasDataUrl: drawCanvas.toDataURL('image/png')
           });
           sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster });
           callbacks.onAddChatMessage('', `👋 [${guestName}]님이 입장하여 [${assignedRole === 'P2' ? '🕹️ 2P 팔레트' : '👀 구경꾼'}] 역할을 맡았습니다!`, 'system');
@@ -305,16 +436,23 @@ window.BanBan.Network = (function () {
 
     // [친구 방 입장하기 - 2P 또는 구경꾼]
     document.getElementById('btn-join-room').addEventListener('click', () => {
+      State.myNickname = (document.getElementById('mp-nickname').value || '팔레트장인').trim();
+      State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
+
+      // Socket.io 서버가 켜져 있으면 Socket.io 방 입장으로 처리
+      if (isSocketServerAvailable && typeof window.io === 'function') {
+        connectViaSocketServer(false, showMpFeedback, multiModal, p2pBadge);
+        return;
+      }
+
       if (typeof Peer === 'undefined') {
         showMpFeedback('PeerJS 라이브러리를 불러오지 못했습니다.', true);
         return;
       }
-      State.myNickname = (document.getElementById('mp-nickname').value || '팔레트장인').trim();
-      State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
       const targetHostId = Config.PEER_PREFIX + State.currentRoomCode;
 
       if (peer) peer.destroy();
-      showMpFeedback(`⏳ 방 [${State.currentRoomCode}]에 연결 중...`);
+      showMpFeedback(`⏳ 무서버 P2P 방 [${State.currentRoomCode}]에 연결 중...`);
 
       peer = new Peer();
       peer.on('open', (id) => {
@@ -339,6 +477,10 @@ window.BanBan.Network = (function () {
             State.playerRoster = data.roster || State.playerRoster;
             applyMyRoleFromRoster();
             renderPlayerRoster();
+
+            if (data.canvasDataUrl) {
+              Scene3D.loadCanvasFromDataURL(data.canvasDataUrl);
+            }
 
             p2pBadge.classList.remove('hidden');
             p2pBadge.classList.add('flex');
