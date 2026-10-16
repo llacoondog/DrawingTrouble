@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>반반 무마니 3D - 피지컬 드로잉 파티게임</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS CDN (100% 무료 P2P WebRTC 멀티플레이) -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- Google Fonts (Inter & Pretendard fallback) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- 커스텀 스타일시트 -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="relative w-screen h-screen overflow-hidden">
+
+  <!-- 3D 렌더링 컨테이너 -->
+  <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+  <!-- 상단 상태 표시바 -->
+  <div id="top-bar" class="absolute top-3 left-3 right-3 lg:right-[336px] z-10 flex flex-wrap items-center justify-between gap-2 bg-[#161923]/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-2xl">
+    <div class="flex flex-wrap items-center gap-2.5">
+      <span id="round-text" class="bg-indigo-600 px-3 py-1 rounded-xl font-extrabold text-xs sm:text-sm tracking-wide shadow">ROUND 1</span>
+      <div id="timer-text" class="text-lg sm:text-xl font-black text-sky-400 bg-black/40 px-3 py-0.5 rounded-xl min-w-[58px] text-center">60s</div>
+      <div id="prompt-text" class="text-sm sm:text-base font-extrabold text-amber-300 px-1">제시어: 선글라스 낀 파인애플</div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- 펜 ON/OFF 상태 -->
+      <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
+        <span class="text-slate-400">펜:</span>
+        <span id="pen-status" class="text-rose-500 font-extrabold">OFF</span>
+      </div>
+      <!-- 현재 공급 중인 색상 -->
+      <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
+        <div id="color-preview" class="w-3.5 h-3.5 rounded-full border-2 border-white" style="background: transparent;"></div>
+        <span id="color-name" class="text-slate-200">발판 대기</span>
+      </div>
+      <!-- 도화지 초기화 버튼 -->
+      <button id="btn-clear" class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow">
+        도화지 지우기
+      </button>
+      <!-- 무료 P2P 멀티플레이 방 만들기/입장 버튼 -->
+      <button id="btn-open-multi" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-lg border border-purple-400/50 flex items-center gap-1.5">
+        <span>🌐 멀티플레이 방 만들기 / 입장</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 좌측 상단 모드 & 2P AI 도우미 스위처 -->
+  <div id="mode-switcher" class="absolute top-[74px] left-3 z-10 flex flex-wrap gap-1.5 max-w-[calc(100vw-24px)] lg:max-w-[calc(100vw-360px)]">
+    <button id="mode-both" class="mode-btn bg-pink-600 text-white border border-pink-400 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
+      🎮 1P+2P 동시 조작
+    </button>
+    <button id="mode-p1" class="mode-btn bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
+      🎨 1P만 조작
+    </button>
+    <button id="mode-p2" class="mode-btn bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
+      🕹️ 2P만 조작
+    </button>
+    <button id="mode-spec" class="mode-btn bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
+      👀 구경꾼 시점 (제시어 가리기)
+    </button>
+    <button id="btn-ai-p2" class="bg-emerald-500 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-xl text-xs font-extrabold shadow transition hover:brightness-110">
+      🤖 2P 자동 도우미: ON
+    </button>
+    <div id="p2p-status-badge" class="hidden items-center gap-1.5 bg-purple-950/90 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+      <span id="p2p-status-text">P2P 대기중</span>
+    </div>
+  </div>
+
+  <!-- 좌측 하단 조작 가이드 -->
+  <div id="controls-guide" class="hidden sm:block absolute bottom-3 left-3 z-10 bg-[#161923]/90 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/10 text-xs leading-relaxed shadow-xl max-w-md">
+    <div class="text-slate-200">
+      🎨 <b>1P 브러시 러너 (도화지):</b>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">W</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">A</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">S</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">D</kbd> 이동 (물감 위 미끄러짐 주의!)
+    </div>
+    <div class="text-slate-200 mt-1">
+      🕹️ <b>2P 팔레트 엔지니어 (상단 데크):</b>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↑</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">←</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↓</kbd>
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">→</kbd> 발판 밟기
+    </div>
+    <div class="text-slate-400 mt-1">
+      💡 화면 클릭 후 키보드로 움직이거나, 우측 채팅창에 제시어를 입력해 정답 폭죽을 터뜨려 보세요!
+    </div>
+  </div>
+
+  <!-- 우측 실시간 채팅 & 스코어 사이드바 -->
+  <div id="right-panel" class="
+    absolute bottom-3 right-3 left-3 h-56
+    lg:top-3 lg:bottom-3 lg:right-3 lg:left-auto lg:w-[320px] lg:h-auto
+    z-10 bg-[#161923]/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden
+  ">
+    <!-- 패널 헤더 -->
+    <div class="px-4 py-2.5 bg-white/5 border-b border-white/10 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <h3 class="text-xs sm:text-sm font-extrabold text-slate-200">💬 실시간 정답 채팅</h3>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-[11px] text-slate-400 flex items-center gap-1 cursor-pointer">
+          <input type="checkbox" id="bot-toggle" checked class="accent-indigo-500 rounded"> 봇 채팅
+        </label>
+        <span id="score-text" class="bg-amber-400 text-slate-900 font-extrabold text-xs px-2.5 py-0.5 rounded-full">0점</span>
+      </div>
+    </div>
+
+    <!-- 접속 플레이어 역할 칩 목록 -->
+    <div id="player-list" class="px-3 py-2 bg-black/25 border-b border-white/5 flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+      <span class="text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold">🎨 1P 로컬화가</span>
+      <span class="text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold">🤖 2P AI도우미</span>
+    </div>
+
+    <!-- 채팅 메시지 리스트 -->
+    <div id="chat-messages" class="flex-1 p-3 overflow-y-auto flex flex-col gap-2 text-xs sm:text-[13px]"></div>
+
+    <!-- 채팅 입력 폼 -->
+    <div class="p-2.5 bg-black/30 border-t border-white/10 flex gap-2">
+      <input
+        type="text"
+        id="chat-input"
+        placeholder="정답을 입력해 맞혀보세요!"
+        autocomplete="off"
+        class="flex-1 bg-[#1a1d28] border border-white/15 focus:border-indigo-500 text-white px-3 py-2 rounded-xl text-xs sm:text-sm outline-none transition"
+      />
+      <button id="btn-send" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm transition shadow">
+        전송
+      </button>
+    </div>
+  </div>
+
+  <!-- 라운드 결과 발표 모달 -->
+  <div id="result-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="modal-pop bg-[#1e222d] border border-white/15 rounded-3xl p-6 sm:p-8 text-center max-w-sm w-full shadow-2xl">
+      <div id="modal-title" class="text-2xl font-black text-emerald-400 mb-1">🎉 정답 판정 성공!</div>
+      <div id="modal-desc" class="text-sm text-slate-300 mb-4 leading-relaxed"></div>
+      <img id="result-img" class="w-52 h-52 rounded-2xl border-4 border-slate-700 bg-white mx-auto mb-5 object-contain shadow-inner" alt="완성된 그림" />
+      <div class="flex gap-2.5 justify-center">
+        <button id="btn-save" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition">
+          📥 PNG 저장
+        </button>
+        <button id="btn-next-round" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-lg">
+          다음 라운드 ▶
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🌐 무료 P2P 멀티플레이 방 만들기 / 입장 모달 -->
+  <div id="multi-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="modal-pop bg-[#1b1f2b] border border-purple-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-left relative">
+      <button id="btn-close-multi" class="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold bg-white/5 px-2.5 py-1 rounded-lg">✕ 닫기</button>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="bg-purple-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-lg">100% 무료 P2P</span>
+        <h2 class="text-xl font-black text-white">멀티플레이 로비</h2>
+      </div>
+      <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+        별도 서버 결제 없이 <b>WebRTC(PeerJS)</b>로 친구 브라우저와 직접 연결합니다. 방 코드를 정해 방을 만들거나 친구의 방 코드를 입력해 입장하세요!
+      </p>
+
+      <div class="space-y-3 mb-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
+          <input id="mp-nickname" type="text" maxlength="10" placeholder="예: 피카소지우" value="열정화가" class="w-full bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-300 mb-1">방 코드 (영문/숫자 4~8자리)</label>
+          <div class="flex gap-2">
+            <input id="mp-roomcode" type="text" maxlength="10" placeholder="예: PARTY7" value="PARTY7" class="flex-1 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm font-extrabold tracking-wider text-amber-300 uppercase outline-none" />
+            <button id="btn-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 rounded-xl transition">코드 복사</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="mp-feedback" class="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-xl px-3 py-2 mb-4 hidden"></div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <button id="btn-host-room" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
+          <span>👑 방 만들기 (1P 호스트)</span>
+        </button>
+        <button id="btn-join-room" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
+          <span>🚀 친구 방 입장하기</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 모듈화된 클라이언트 스크립트 로드 (file:// 및 웹 서버 모두 호환) -->
+  <script src="js/config.js"></script>
+  <script src="js/scene3d.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

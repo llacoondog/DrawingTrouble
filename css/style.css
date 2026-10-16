@@ -1,0 +1,43 @@
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+  background-color: #12141c;
+  color: #ffffff;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes pulseUrgent {
+  from { transform: scale(1); }
+  to { transform: scale(1.12); }
+}
+
+.urgent-timer {
+  color: #ef4444 !important;
+  animation: pulseUrgent 0.5s infinite alternate;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-pop {
+  animation: popIn 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+/* 커스텀 스크롤바 */
+#chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
