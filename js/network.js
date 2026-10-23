@@ -1,7 +1,5 @@
 // ==========================================
-// 반반 무마니 3D - 하이브리드 멀티플레이 네트워크 (network.js)
-// 1) 무설치/서버비 0원: PeerJS(WebRTC) P2P 모드 + BroadcastChannel 탭 연동
-// 2) 선택 구동 서버: Node.js + Socket.io(server.js) 감지 시 자동 전환
+// 반반 무마니 3D - 대기방(Waiting Room) & 하이브리드 멀티플레이 네트워크 (network.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -13,7 +11,6 @@ window.BanBan.Network = (function () {
   let hostConnection = null;
   const guestConnections = [];
 
-  // Socket.io 서버 연결 상태 (server.js 구동 시 자동 활성화)
   let socketIoClient = null;
   let isSocketServerAvailable = false;
 
@@ -21,31 +18,81 @@ window.BanBan.Network = (function () {
     onAddChatMessage: () => {},
     onEndRound: () => {},
     onStartRound: () => {},
+    onPauseForWaitingRoom: () => {},
     onSetMode: () => {},
     onUpdateAiButtonUI: () => {},
     normalizeAnswer: (s) => s.replace(/\s+/g, '').toLowerCase()
   };
 
   function renderPlayerRoster() {
+    // 1) 우측 사이드바 플레이어 칩 렌더링
     const listEl = document.getElementById('player-list');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    State.playerRoster.forEach(p => {
-      const span = document.createElement('span');
-      const isMe = State.isP2PConnected && p.id === State.myPeerId;
-      const meTag = isMe ? ' (나)' : '';
-      if (p.role === 'P1') {
-        span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold';
-        span.textContent = `🎨 1P ${p.nickname}${meTag} (${p.score}점)`;
-      } else if (p.role === 'P2') {
-        span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold';
-        span.textContent = `🕹️ 2P ${p.nickname}${meTag} (${p.score}점)`;
+    if (listEl) {
+      listEl.innerHTML = '';
+      State.playerRoster.forEach(p => {
+        const span = document.createElement('span');
+        const isMe = State.isP2PConnected && p.id === State.myPeerId;
+        const meTag = isMe ? ' (나)' : '';
+        if (p.role === 'P1') {
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold';
+          span.textContent = `🎨 1P ${p.nickname}${meTag} (${p.score}점)`;
+        } else if (p.role === 'P2') {
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold';
+          span.textContent = `🕹️ 2P ${p.nickname}${meTag} (${p.score}점)`;
+        } else {
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold';
+          span.textContent = `👀 ${p.nickname}${meTag} (${p.score}점)`;
+        }
+        listEl.appendChild(span);
+      });
+    }
+
+    // 2) 대기방(Waiting Room) 모달 내부 참가자 목록 렌더링
+    const waitingListEl = document.getElementById('waiting-player-list');
+    if (waitingListEl) {
+      waitingListEl.innerHTML = '';
+      State.playerRoster.forEach((p, idx) => {
+        const row = document.createElement('div');
+        const isMe = State.isP2PConnected && p.id === State.myPeerId;
+        row.className = `flex items-center justify-between px-3 py-2 rounded-xl border ${
+          isMe ? 'bg-white/10 border-purple-400/50' : 'bg-white/5 border-white/5'
+        }`;
+
+        let roleBadge = '';
+        if (p.role === 'P1') {
+          roleBadge = '<span class="text-xs font-extrabold px-2 py-0.5 rounded-lg bg-pink-500/25 text-pink-300 border border-pink-500/40">🎨 1P 브러시 러너</span>';
+        } else if (p.role === 'P2') {
+          roleBadge = '<span class="text-xs font-extrabold px-2 py-0.5 rounded-lg bg-cyan-500/25 text-cyan-300 border border-cyan-500/40">🕹️ 2P 팔레트 엔지니어</span>';
+        } else {
+          roleBadge = '<span class="text-xs font-semibold px-2 py-0.5 rounded-lg bg-slate-700 text-slate-300">👀 구경꾼 (정답자)</span>';
+        }
+
+        const hostCrown = idx === 0 ? '👑 ' : '';
+        const meBadge = isMe ? ' <span class="text-amber-300 font-extrabold">(나)</span>' : '';
+
+        row.innerHTML = `
+          <div class="text-xs font-bold text-white">${hostCrown}${p.nickname}${meBadge}</div>
+          <div>${roleBadge}</div>
+        `;
+        waitingListEl.appendChild(row);
+      });
+    }
+
+    // 대기방 방장/게스트 전용 버튼 토글
+    const btnStartGame = document.getElementById('btn-start-mp-game');
+    const btnSwapRoles = document.getElementById('btn-swap-roles');
+    const guestNotice = document.getElementById('waiting-guest-notice');
+    if (btnStartGame && guestNotice) {
+      if (State.isP2PHost) {
+        btnStartGame.classList.remove('hidden');
+        if (btnSwapRoles) btnSwapRoles.classList.remove('hidden');
+        guestNotice.classList.add('hidden');
       } else {
-        span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold';
-        span.textContent = `👀 ${p.nickname}${meTag} (${p.score}점)`;
+        btnStartGame.classList.add('hidden');
+        if (btnSwapRoles) btnSwapRoles.classList.add('hidden');
+        guestNotice.classList.remove('hidden');
       }
-      listEl.appendChild(span);
-    });
+    }
 
     // 우측 상단 내 점수 배지 동기화
     const scoreEl = document.getElementById('score-text');
@@ -60,7 +107,7 @@ window.BanBan.Network = (function () {
     }
   }
 
-  // 라운드마다 플레이어 역할(P1 -> P2 -> SPECTATOR) 순환 로테이션
+  // 라운드마다 또는 대기방에서 플레이어 역할(P1 -> P2 -> SPECTATOR) 순환 로테이션
   function rotatePlayerRoles() {
     const roster = State.playerRoster;
     if (roster.length < 2) return;
@@ -87,6 +134,12 @@ window.BanBan.Network = (function () {
     if (State.isP2PConnected) {
       const me = State.playerRoster.find(p => p.id === State.myPeerId);
       if (!me) return;
+
+      const hasHumanP2 = State.playerRoster.some(p => p.role === 'P2' && p.id !== 'local-2');
+      if (hasHumanP2) {
+        State.aiHelperEnabled = false;
+        callbacks.onUpdateAiButtonUI();
+      }
 
       const modePrefix = isSocketServerAvailable ? '서버방' : 'P2P방';
       if (me.role === 'P1') {
@@ -115,18 +168,15 @@ window.BanBan.Network = (function () {
   }
 
   function sendNetworkPacket(payload) {
-    // 1) 같은 브라우저 다른 탭으로 전송
     if (netChannel) {
       try { netChannel.postMessage(payload); } catch (e) {}
     }
 
-    // 2) Socket.io 서버 모드가 활성화된 경우
     if (State.isP2PConnected && isSocketServerAvailable && socketIoClient) {
       socketIoClient.emit('PACKET', payload);
       return;
     }
 
-    // 3) PeerJS 무서버 P2P 원격 친구들에게 전송
     if (State.isP2PConnected) {
       if (State.isP2PHost) {
         guestConnections.forEach(conn => {
@@ -140,10 +190,38 @@ window.BanBan.Network = (function () {
     }
   }
 
+  function switchModalToWaitingView() {
+    const connectView = document.getElementById('mp-connect-view');
+    const waitingView = document.getElementById('mp-waiting-view');
+    const waitingRoomCode = document.getElementById('waiting-room-code');
+    if (connectView) connectView.classList.add('hidden');
+    if (waitingView) waitingView.classList.remove('hidden');
+    if (waitingRoomCode) waitingRoomCode.textContent = State.currentRoomCode;
+    renderPlayerRoster();
+  }
+
+  function closeMultiModal() {
+    const multiModal = document.getElementById('multi-modal');
+    if (multiModal) {
+      multiModal.classList.add('hidden');
+      multiModal.classList.remove('flex');
+    }
+  }
+
+  function openMultiModal() {
+    const multiModal = document.getElementById('multi-modal');
+    if (multiModal) {
+      multiModal.classList.remove('hidden');
+      multiModal.classList.add('flex');
+    }
+    if (State.isP2PConnected) {
+      switchModalToWaitingView();
+    }
+  }
+
   function handleIncomingPacket(data, sourceConn = null) {
     if (!data) return;
 
-    // PeerJS P2P 호스트인 경우 게스트가 보낸 패킷을 다른 게스트들에게도 릴레이
     if (!isSocketServerAvailable && State.isP2PHost && sourceConn) {
       guestConnections.forEach(c => {
         if (c !== sourceConn && c.open) {
@@ -155,18 +233,29 @@ window.BanBan.Network = (function () {
     const { p1Obj, p2Obj, drawCanvas } = Scene3D.getSceneObjects();
 
     if (data.type === 'MOVE_P1' && State.controlMode !== 'P1') {
-      const prevX = p1Obj.group.position.x;
-      const prevZ = p1Obj.group.position.z;
       p1Obj.group.position.set(data.x, 0, data.z);
-      State.p1State.vx = data.x - prevX;
-      State.p1State.vz = data.z - prevZ;
+      State.p1State.vx = typeof data.vx === 'number' ? data.vx : 0;
+      State.p1State.vz = typeof data.vz === 'number' ? data.vz : 0;
     } else if (data.type === 'MOVE_P2' && State.controlMode !== 'P2') {
-      const prevX = p2Obj.group.position.x;
-      const prevZ = p2Obj.group.position.z;
       p2Obj.group.position.set(data.x, 0, data.z);
-      State.p2State.vx = data.x - prevX;
-      State.p2State.vz = data.z - prevZ;
-      State.isPenDown = data.isPenDown;
+      State.p2State.vx = typeof data.vx === 'number' ? data.vx : 0;
+      State.p2State.vz = typeof data.vz === 'number' ? data.vz : 0;
+      State.isPenDown = Boolean(data.isPenDown);
+      if (data.activeColorHex !== undefined) State.activeColorHex = data.activeColorHex;
+      if (data.activeColorName !== undefined) State.activeColorName = data.activeColorName;
+    } else if (data.type === 'START_GAME') {
+      State.currentRound = data.round || 1;
+      if (typeof data.promptIndex === 'number') {
+        State.currentPromptIndex = data.promptIndex;
+      }
+      if (data.roster) {
+        State.playerRoster = data.roster;
+      }
+      applyMyRoleFromRoster();
+      renderPlayerRoster();
+      closeMultiModal();
+      callbacks.onAddChatMessage('', `🚀 방장이 게임을 시작했습니다! ROUND ${State.currentRound} 출발!`, 'system');
+      callbacks.onStartRound(true);
     } else if (data.type === 'CHAT') {
       if (State.gameState === 'PLAYING' && callbacks.normalizeAnswer(data.text) === callbacks.normalizeAnswer(State.currentPrompt.word)) {
         callbacks.onAddChatMessage('', `🎊 [${data.sender}]님이 정답 [${State.currentPrompt.word}]을 맞혔습니다!`, 'correct');
@@ -195,22 +284,23 @@ window.BanBan.Network = (function () {
       } else {
         rotatePlayerRoles();
       }
+      closeMultiModal();
       callbacks.onStartRound(true);
     } else if (data.type === 'CLEAR') {
       Scene3D.clearCanvas();
+      if (data.by) {
+        callbacks.onAddChatMessage('', `💥 ${data.by}가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!`, 'system');
+      }
     } else if (data.type === 'ROSTER_SYNC') {
       State.playerRoster = data.roster || State.playerRoster;
-      const hasHumanP2 = State.playerRoster.some(p => p.role === 'P2' && p.id !== 'local-2');
-      if (hasHumanP2 && State.aiHelperEnabled) {
-        State.aiHelperEnabled = false;
-        callbacks.onUpdateAiButtonUI();
+      if (Array.isArray(State.playerRoster) && State.playerRoster[0]) {
+        State.isP2PHost = State.playerRoster[0].id === State.myPeerId;
       }
       applyMyRoleFromRoster();
       renderPlayerRoster();
       if (data.joinNotice) callbacks.onAddChatMessage('', data.joinNotice, 'system');
       if (data.leaveNotice) callbacks.onAddChatMessage('', data.leaveNotice, 'system');
     } else if (data.type === 'REQUEST_CANVAS_SYNC') {
-      // 서버가 중도 입장자를 위해 현재 캔버스 스냅샷을 요청한 경우
       sendNetworkPacket({
         type: 'CANVAS_SYNC',
         targetPeerId: data.targetPeerId,
@@ -221,7 +311,6 @@ window.BanBan.Network = (function () {
     }
   }
 
-  // server.js(Socket.io)가 실행 중인지 자동으로 감지하여 로드
   function tryDetectSocketServer(onDetected) {
     if (window.location.protocol === 'file:') return;
     const script = document.createElement('script');
@@ -239,14 +328,14 @@ window.BanBan.Network = (function () {
     document.head.appendChild(script);
   }
 
-  function connectViaSocketServer(isHostIntent, showMpFeedback, multiModal, p2pBadge) {
+  function connectViaSocketServer(isHostIntent, showMpFeedback, p2pBadge) {
     if (!socketIoClient) {
       socketIoClient = window.io();
       socketIoClient.on('PACKET', (data) => {
         if (data.type === 'WELCOME') {
           State.myPeerId = data.peerId;
           State.isP2PConnected = true;
-          State.isP2PHost = isHostIntent;
+          State.isP2PHost = Boolean(data.isHost);
           State.currentRound = data.round || 1;
           if (typeof data.promptIndex === 'number') {
             State.currentPromptIndex = data.promptIndex;
@@ -258,15 +347,22 @@ window.BanBan.Network = (function () {
 
           p2pBadge.classList.remove('hidden');
           p2pBadge.classList.add('flex');
-          multiModal.classList.add('hidden');
-          multiModal.classList.remove('flex');
+
+          if (data.roomStatus === 'PLAYING') {
+            closeMultiModal();
+            callbacks.onStartRound(true);
+          } else {
+            callbacks.onPauseForWaitingRoom();
+            switchModalToWaitingView();
+            showMpFeedback(`✅ 대기방 [${State.currentRoomCode}] 입장 완료! 인원이 모이면 게임을 시작하세요.`);
+          }
         } else {
           handleIncomingPacket(data, null);
         }
       });
     }
 
-    showMpFeedback(`⏳ 서버 방 [${State.currentRoomCode}]에 접속 중...`);
+    showMpFeedback(`⏳ 서버 대기방 [${State.currentRoomCode}]에 접속 중...`);
     socketIoClient.emit('JOIN_ROOM', {
       roomCode: State.currentRoomCode,
       nickname: State.myNickname,
@@ -284,13 +380,10 @@ window.BanBan.Network = (function () {
       console.warn('BroadcastChannel not supported in this context.');
     }
 
-    const multiModal = document.getElementById('multi-modal');
     const mpFeedback = document.getElementById('mp-feedback');
     const p2pBadge = document.getElementById('p2p-status-badge');
-    const p2pStatusText = document.getElementById('p2p-status-text');
     const modeBadge = document.getElementById('mp-mode-badge');
 
-    // Socket.io 서버 구동 여부 자동 감지
     tryDetectSocketServer(() => {
       if (modeBadge) {
         modeBadge.textContent = '⚡ Socket.io 서버 연동됨';
@@ -301,11 +394,30 @@ window.BanBan.Network = (function () {
     function showMpFeedback(msg, isError = false) {
       mpFeedback.textContent = msg;
       mpFeedback.className = isError
-        ? 'text-xs font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 rounded-xl px-3 py-2 mb-4 block'
-        : 'text-xs font-semibold text-sky-300 bg-sky-500/15 border border-sky-500/30 rounded-xl px-3 py-2 mb-4 block';
+        ? 'text-xs font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 rounded-xl px-3 py-2 mt-2 block'
+        : 'text-xs font-semibold text-sky-300 bg-sky-500/15 border border-sky-500/30 rounded-xl px-3 py-2 mt-2 block';
     }
 
-    // URL 쿼리 파라미터(?room=PARTY7) 감지 시 자동으로 방 코드 입력 및 로비 모달 오픈
+    function copyRoomCode() {
+      const codeInput = document.getElementById('mp-roomcode');
+      const codeVal = (State.currentRoomCode || codeInput.value || 'PARTY7').trim().toUpperCase();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(codeVal);
+      }
+      showMpFeedback(`📋 방 코드 [${codeVal}]가 복사되었습니다! 친구에게 알려주세요.`);
+    }
+
+    function copyInviteLink() {
+      const codeInput = document.getElementById('mp-roomcode');
+      const codeVal = (State.currentRoomCode || codeInput.value || 'PARTY7').trim().toUpperCase();
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(codeVal)}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(inviteUrl);
+      }
+      showMpFeedback(`🔗 초대 링크가 복사되었습니다! 카톡이나 디스코드에 붙여넣어 친구를 초대하세요.`);
+    }
+
+    // URL 쿼리 파라미터(?room=PARTY7) 감지 시 자동으로 대기방 모달 오픈
     const urlParams = new URLSearchParams(window.location.search);
     const invitedRoom = urlParams.get('room');
     if (invitedRoom) {
@@ -313,55 +425,60 @@ window.BanBan.Network = (function () {
       const roomInput = document.getElementById('mp-roomcode');
       if (roomInput) roomInput.value = cleanInvited;
       State.currentRoomCode = cleanInvited;
-      multiModal.classList.remove('hidden');
-      multiModal.classList.add('flex');
-      showMpFeedback(`💌 초대 링크로 접속하셨습니다! 닉네임을 확인하고 [🚀 친구 방 입장하기]를 눌러주세요.`);
+      openMultiModal();
+      showMpFeedback(`💌 초대 링크로 접속하셨습니다! 닉네임을 입력하고 [🚀 친구 대기방 입장]을 눌러주세요.`);
     }
 
-    document.getElementById('btn-open-multi').addEventListener('click', () => {
-      multiModal.classList.remove('hidden');
-      multiModal.classList.add('flex');
-    });
+    document.getElementById('btn-open-multi').addEventListener('click', openMultiModal);
+    p2pBadge.addEventListener('click', openMultiModal);
+    document.getElementById('btn-close-multi').addEventListener('click', closeMultiModal);
 
-    document.getElementById('btn-close-multi').addEventListener('click', () => {
-      multiModal.classList.add('hidden');
-      multiModal.classList.remove('flex');
-    });
+    document.getElementById('btn-copy-code').addEventListener('click', copyRoomCode);
+    document.getElementById('btn-waiting-copy-code').addEventListener('click', copyRoomCode);
+    document.getElementById('btn-copy-link').addEventListener('click', copyInviteLink);
+    document.getElementById('btn-waiting-copy-link').addEventListener('click', copyInviteLink);
 
-    document.getElementById('btn-copy-code').addEventListener('click', () => {
-      const codeInput = document.getElementById('mp-roomcode');
-      const codeVal = (codeInput.value || 'PARTY7').trim().toUpperCase();
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(codeVal);
-      } else {
-        codeInput.select();
-        document.execCommand('copy');
-      }
-      showMpFeedback(`📋 방 코드 [${codeVal}]가 복사되었습니다! 친구에게 알려주세요.`);
-    });
-
-    // 초대 링크(?room=코드) 원클릭 복사
-    const btnCopyLink = document.getElementById('btn-copy-link');
-    if (btnCopyLink) {
-      btnCopyLink.addEventListener('click', () => {
-        const codeInput = document.getElementById('mp-roomcode');
-        const codeVal = (codeInput.value || 'PARTY7').trim().toUpperCase();
-        const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(codeVal)}`;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(inviteUrl);
-        }
-        showMpFeedback(`🔗 초대 링크가 복사되었습니다! 카톡이나 디스코드에 붙여넣어 친구를 바로 초대하세요.`);
+    // 대기방 내 [🔄 역할 로테이션] 버튼 (방장 전용)
+    const btnSwapRoles = document.getElementById('btn-swap-roles');
+    if (btnSwapRoles) {
+      btnSwapRoles.addEventListener('click', () => {
+        if (!State.isP2PHost) return;
+        rotatePlayerRoles();
+        sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster });
+        showMpFeedback('🔄 참가자들의 역할(1P/2P/구경꾼)을 순환 교체했습니다!');
       });
     }
 
-    // [방 만들기 - 1P 호스트]
+    // 대기방 내 [🎮 게임 시작!] 버튼 (방장 전용)
+    const btnStartMpGame = document.getElementById('btn-start-mp-game');
+    if (btnStartMpGame) {
+      btnStartMpGame.addEventListener('click', () => {
+        if (!State.isP2PHost) return;
+        State.currentRound = 1;
+        State.currentPromptIndex = 0;
+        applyMyRoleFromRoster();
+        renderPlayerRoster();
+        closeMultiModal();
+
+        sendNetworkPacket({
+          type: 'START_GAME',
+          round: State.currentRound,
+          promptIndex: State.currentPromptIndex,
+          roster: State.playerRoster
+        });
+
+        callbacks.onAddChatMessage('', `🎮 대기방 인원 준비 완료! ROUND 1 게임을 시작합니다!`, 'system');
+        callbacks.onStartRound(false);
+      });
+    }
+
+    // [대기방 만들기 - 방장]
     document.getElementById('btn-host-room').addEventListener('click', () => {
       State.myNickname = (document.getElementById('mp-nickname').value || '방장화가').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
 
-      // Socket.io 서버가 켜져 있으면 Socket.io 방 생성으로 처리
       if (isSocketServerAvailable && typeof window.io === 'function') {
-        connectViaSocketServer(true, showMpFeedback, multiModal, p2pBadge);
+        connectViaSocketServer(true, showMpFeedback, p2pBadge);
         return;
       }
 
@@ -372,31 +489,36 @@ window.BanBan.Network = (function () {
       const hostPeerId = Config.PEER_PREFIX + State.currentRoomCode;
 
       if (peer) peer.destroy();
-      showMpFeedback(`⏳ 무서버 P2P 방 [${State.currentRoomCode}] 생성 중...`);
+      showMpFeedback(`⏳ 무서버 P2P 대기방 [${State.currentRoomCode}] 생성 중...`);
 
       peer = new Peer(hostPeerId);
       peer.on('open', (id) => {
         State.myPeerId = id;
         State.isP2PConnected = true;
         State.isP2PHost = true;
-        callbacks.onSetMode('P1', 'mode-p1');
 
         State.playerRoster = [{ id: State.myPeerId, nickname: State.myNickname, role: 'P1', score: 0 }];
+        applyMyRoleFromRoster();
         renderPlayerRoster();
 
         p2pBadge.classList.remove('hidden');
         p2pBadge.classList.add('flex');
-        p2pStatusText.textContent = `P2P방: ${State.currentRoomCode} (🎨 1P 브러시)`;
 
-        showMpFeedback(`✅ 방 [${State.currentRoomCode}] 개설 완료! 코드나 초대 링크를 친구에게 공유하세요.`);
-        callbacks.onAddChatMessage('', `🌐 무서버 P2P 방 [${State.currentRoomCode}]이 개설되었습니다!`, 'system');
+        callbacks.onPauseForWaitingRoom();
+        switchModalToWaitingView();
+        showMpFeedback(`✅ 대기방 [${State.currentRoomCode}] 개설 완료! 친구가 들어오면 [🎮 게임 시작!]을 눌러주세요.`);
+        callbacks.onAddChatMessage('', `🌐 대기방 [${State.currentRoomCode}]이 개설되었습니다! 친구들을 기다리는 중...`, 'system');
       });
 
       peer.on('connection', (conn) => {
         guestConnections.push(conn);
         conn.on('open', () => {
+          const hasP1 = State.playerRoster.some(p => p.role === 'P1');
           const hasP2 = State.playerRoster.some(p => p.role === 'P2');
-          const assignedRole = hasP2 ? 'SPECTATOR' : 'P2';
+          let assignedRole = 'SPECTATOR';
+          if (!hasP1) assignedRole = 'P1';
+          else if (!hasP2) assignedRole = 'P2';
+
           const guestName = conn.metadata?.nickname || `친구${guestConnections.length}`;
 
           if (assignedRole === 'P2') {
@@ -411,14 +533,19 @@ window.BanBan.Network = (function () {
           conn.send({
             type: 'WELCOME',
             peerId: conn.peer,
+            isHost: false,
+            roomStatus: State.gameState,
             assignedRole,
             round: State.currentRound,
             promptIndex: State.currentPromptIndex,
             roster: State.playerRoster,
-            canvasDataUrl: drawCanvas.toDataURL('image/png')
+            canvasDataUrl: State.gameState === 'PLAYING' ? drawCanvas.toDataURL('image/png') : null
           });
-          sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster });
-          callbacks.onAddChatMessage('', `👋 [${guestName}]님이 입장하여 [${assignedRole === 'P2' ? '🕹️ 2P 팔레트' : '👀 구경꾼'}] 역할을 맡았습니다!`, 'system');
+
+          const joinNotice = `👋 [${guestName}]님이 대기방에 입장하여 [${assignedRole === 'P2' ? '🕹️ 2P 팔레트' : '👀 구경꾼'}] 역할을 맡았습니다!`;
+          sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster, joinNotice });
+          callbacks.onAddChatMessage('', joinNotice, 'system');
+          showMpFeedback(`👋 [${guestName}]님이 대기방에 입장했습니다!`);
         });
 
         conn.on('data', (data) => handleIncomingPacket(data, conn));
@@ -434,14 +561,13 @@ window.BanBan.Network = (function () {
       });
     });
 
-    // [친구 방 입장하기 - 2P 또는 구경꾼]
+    // [친구 대기방 입장하기 - 2P 또는 구경꾼]
     document.getElementById('btn-join-room').addEventListener('click', () => {
       State.myNickname = (document.getElementById('mp-nickname').value || '팔레트장인').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
 
-      // Socket.io 서버가 켜져 있으면 Socket.io 방 입장으로 처리
       if (isSocketServerAvailable && typeof window.io === 'function') {
-        connectViaSocketServer(false, showMpFeedback, multiModal, p2pBadge);
+        connectViaSocketServer(false, showMpFeedback, p2pBadge);
         return;
       }
 
@@ -452,7 +578,7 @@ window.BanBan.Network = (function () {
       const targetHostId = Config.PEER_PREFIX + State.currentRoomCode;
 
       if (peer) peer.destroy();
-      showMpFeedback(`⏳ 무서버 P2P 방 [${State.currentRoomCode}]에 연결 중...`);
+      showMpFeedback(`⏳ 대기방 [${State.currentRoomCode}]에 연결 중...`);
 
       peer = new Peer();
       peer.on('open', (id) => {
@@ -463,12 +589,13 @@ window.BanBan.Network = (function () {
         conn.on('open', () => {
           State.isP2PConnected = true;
           State.isP2PHost = false;
-          showMpFeedback(`✅ 방 [${State.currentRoomCode}] 입장 성공! 잠시 후 역할이 배정됩니다.`);
+          showMpFeedback(`✅ 대기방 [${State.currentRoomCode}] 연결 성공! 역할 정보를 불러오는 중...`);
         });
 
         conn.on('data', (data) => {
           if (data.type === 'WELCOME') {
             if (data.peerId) State.myPeerId = data.peerId;
+            State.isP2PHost = Boolean(data.isHost);
             State.currentRound = data.round || 1;
             if (typeof data.promptIndex === 'number') {
               State.currentPromptIndex = data.promptIndex;
@@ -484,9 +611,15 @@ window.BanBan.Network = (function () {
 
             p2pBadge.classList.remove('hidden');
             p2pBadge.classList.add('flex');
-            multiModal.classList.add('hidden');
-            multiModal.classList.remove('flex');
-            callbacks.onAddChatMessage('', `🚀 방 [${State.currentRoomCode}]에 접속했습니다! 내 역할: ${data.assignedRole}`, 'system');
+
+            if (data.roomStatus === 'PLAYING') {
+              closeMultiModal();
+              callbacks.onAddChatMessage('', `🚀 진행 중인 방 [${State.currentRoomCode}]에 합류했습니다!`, 'system');
+            } else {
+              callbacks.onPauseForWaitingRoom();
+              switchModalToWaitingView();
+              showMpFeedback(`✅ 대기방 입장 완료! 내 역할: ${data.assignedRole === 'P2' ? '🕹️ 2P 팔레트 엔지니어' : '👀 구경꾼'}`);
+            }
           } else {
             handleIncomingPacket(data, null);
           }
@@ -498,7 +631,7 @@ window.BanBan.Network = (function () {
       });
 
       peer.on('error', (err) => {
-        showMpFeedback(`⚠️ 방 [${State.currentRoomCode}]을 찾을 수 없습니다. 방 코드를 확인하세요! (${err.type})`, true);
+        showMpFeedback(`⚠️ 대기방 [${State.currentRoomCode}]을 찾을 수 없습니다. 방 코드를 확인하세요! (${err.type})`, true);
       });
     });
 

@@ -14,16 +14,15 @@ const io = new Server(server, {
   cors: { origin: '*' }
 });
 
-// 현재 폴더의 정적 파일(index.html, css/, js/) 서빙
 app.use(express.static(path.join(__dirname)));
 
-// 방별 상태 관리 메모리 스토어
 const rooms = new Map();
 
 function getOrCreateRoom(roomCode) {
   if (!rooms.has(roomCode)) {
     rooms.set(roomCode, {
       code: roomCode,
+      status: 'WAITING', // 'WAITING' | 'PLAYING'
       round: 1,
       promptIndex: 0,
       roster: []
@@ -35,7 +34,7 @@ function getOrCreateRoom(roomCode) {
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('JOIN_ROOM', ({ roomCode, nickname, isHostIntent }) => {
+  socket.on('JOIN_ROOM', ({ roomCode, nickname }) => {
     const code = (roomCode || 'PARTY7').trim().toUpperCase();
     const cleanName = (nickname || '익명화가').trim().slice(0, 10);
 
@@ -47,7 +46,6 @@ io.on('connection', (socket) => {
 
     const room = getOrCreateRoom(code);
 
-    // 역할 배정: 방에 P1이 없으면 P1, P2가 없으면 P2, 둘 다 있으면 SPECTATOR
     const hasP1 = room.roster.some(p => p.role === 'P1');
     const hasP2 = room.roster.some(p => p.role === 'P2');
     let assignedRole = 'SPECTATOR';
@@ -67,26 +65,28 @@ io.on('connection', (socket) => {
       });
     }
 
-    // 입장한 본인에게 환영 패킷 전송
+    const isRoomHost = room.roster[0] && room.roster[0].id === socket.id;
+
     socket.emit('PACKET', {
       type: 'WELCOME',
       peerId: socket.id,
+      isHost: isRoomHost,
+      roomStatus: room.status,
       assignedRole,
       round: room.round,
       promptIndex: room.promptIndex,
       roster: room.roster
     });
 
-    // 방 전체에 로스터 동기화 및 입장 알림
     io.to(code).emit('PACKET', {
       type: 'ROSTER_SYNC',
       roster: room.roster,
-      joinNotice: `👋 [${cleanName}]님이 입장하여 [${assignedRole === 'P1' ? '🎨 1P 브러시' : assignedRole === 'P2' ? '🕹️ 2P 팔레트' : '👀 구경꾼'}] 역할을 맡았습니다!`
+      roomStatus: room.status,
+      joinNotice: `👋 [${cleanName}]님이 대기방에 입장하여 [${assignedRole === 'P1' ? '🎨 1P 브러시' : assignedRole === 'P2' ? '🕹️ 2P 팔레트' : '👀 구경꾼'}] 역할을 맡았습니다!`
     });
 
-    // 기존 방 인원 중 첫 번째 플레이어에게 현재 도화지 스냅샷 요청
     const otherPlayer = room.roster.find(p => p.id !== socket.id);
-    if (otherPlayer) {
+    if (otherPlayer && room.status === 'PLAYING') {
       io.to(otherPlayer.id).emit('PACKET', {
         type: 'REQUEST_CANVAS_SYNC',
         targetPeerId: socket.id
@@ -94,28 +94,33 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 인게임 패킷 릴레이 (MOVE_P1, MOVE_P2, CHAT, ROUND_WIN, NEXT_ROUND, CLEAR, CANVAS_SYNC)
   socket.on('PACKET', (data) => {
     if (!currentRoom || !data) return;
     const room = rooms.get(currentRoom);
 
     if (room) {
-      if (data.type === 'ROUND_WIN' && Array.isArray(data.roster)) {
+      if (data.type === 'START_GAME') {
+        room.status = 'PLAYING';
+        room.round = data.round || 1;
+        room.promptIndex = data.promptIndex || 0;
+        if (Array.isArray(data.roster)) room.roster = data.roster;
+      } else if (data.type === 'ROUND_WIN' && Array.isArray(data.roster)) {
         room.roster = data.roster;
       } else if (data.type === 'NEXT_ROUND') {
+        room.status = 'PLAYING';
         if (typeof data.round === 'number') room.round = data.round;
         if (typeof data.promptIndex === 'number') room.promptIndex = data.promptIndex;
         if (Array.isArray(data.roster)) room.roster = data.roster;
+      } else if (data.type === 'ROSTER_SYNC' && Array.isArray(data.roster)) {
+        room.roster = data.roster;
       }
     }
 
-    // 특정 대상에게만 보내는 캔버스 동기화 패킷인 경우
     if (data.type === 'CANVAS_SYNC' && data.targetPeerId) {
       io.to(data.targetPeerId).emit('PACKET', data);
       return;
     }
 
-    // 나를 제외한 같은 방의 모든 플레이어에게 브로드캐스트
     socket.to(currentRoom).emit('PACKET', data);
   });
 
@@ -128,7 +133,6 @@ io.on('connection', (socket) => {
     if (room.roster.length === 0) {
       rooms.delete(currentRoom);
     } else {
-      // 만약 P1이나 P2가 나갔다면 남은 구경꾼을 승격
       const hasP1 = room.roster.some(p => p.role === 'P1');
       if (!hasP1 && room.roster[0]) room.roster[0].role = 'P1';
       const hasP2 = room.roster.some(p => p.role === 'P2');
@@ -140,6 +144,7 @@ io.on('connection', (socket) => {
       io.to(currentRoom).emit('PACKET', {
         type: 'ROSTER_SYNC',
         roster: room.roster,
+        roomStatus: room.status,
         leaveNotice: leaver ? `💨 [${leaver.nickname}]님이 퇴장했습니다.` : null
       });
     }
@@ -151,8 +156,5 @@ server.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🎨 반반 무마니 3D 멀티플레이 서버 구동 완료!`);
   console.log(`👉 로컬 접속: http://localhost:${PORT}`);
-  console.log(`💡 서버 비용 없이 외부 친구 초대하기:`);
-  console.log(`   1) GitHub Pages/Vercel에 올리면 서버 없이도 P2P 모드로 무료 작동!`);
-  console.log(`   2) 또는 새 터미널에: npx cloudflared tunnel --url http://localhost:${PORT}`);
   console.log(`====================================================`);
 });

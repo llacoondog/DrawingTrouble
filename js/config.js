@@ -69,21 +69,23 @@ window.BanBan.Config = {
     '이거 완전 현대미술인데??',
     '야 2P 빨리 다른 색깔 발판 밟아ㅋㅋㅋ',
     '계란프라이 아님?',
-    '선 안 끄고 지나가서 가로질렀네ㅋㅋ',
+    '발판에서 발 떼면 펜 꺼진다구ㅋㅋ',
     '외계인 고문하는 그림인가요',
     '바나나?',
     '정체불명의 생명체 탄생ㅋㅋ'
   ],
 
-  // 컨트롤 데크 압력 발판(Pressure Pads) 정의
+  // 2P 컨트롤 데크 발판 정의
+  // - 별도 ON/OFF 스위치 없이 색상 발판을 밟고 있는 동안만 펜 ON!
+  // - 우측 멀리 떨어진 곳(x: 7.0)에 2P 전용 [도화지 전체 지우기] 발판 배치
   PADS_DATA: [
-    { id: 'TOGGLE_PEN', label: '펜 ON/OFF', x: -6.2, z: -6.8, color: 0x6366f1, hex: null, type: 'toggle' },
-    { id: 'RED',    label: '빨강', x: -3.5, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color' },
-    { id: 'YELLOW', label: '노랑', x: -1.5, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color' },
-    { id: 'GREEN',  label: '초록', x:  0.5, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color' },
-    { id: 'BLUE',   label: '파랑', x:  2.5, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color' },
-    { id: 'BLACK',  label: '검정', x:  4.5, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color' },
-    { id: 'ERASER', label: '지우개', x: 6.5, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color' }
+    { id: 'RED',       label: '빨강',         x: -6.5, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color' },
+    { id: 'YELLOW',    label: '노랑',         x: -4.6, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color' },
+    { id: 'GREEN',     label: '초록',         x: -2.7, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color' },
+    { id: 'BLUE',      label: '파랑',         x: -0.8, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color' },
+    { id: 'BLACK',     label: '검정',         x:  1.1, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color' },
+    { id: 'ERASER',    label: '지우개',       x:  3.0, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color' },
+    { id: 'CLEAR_ALL', label: '💥도화지 지우기', x:  7.0, z: -6.8, color: 0xe11d48, hex: null,      type: 'clear' }
   ],
 
   // 폭죽 파티클 색상
@@ -98,21 +100,21 @@ window.BanBan.State = {
   timeLeft: 60,
   currentPromptIndex: 0,
   currentPrompt: window.BanBan.Config.WORD_POOL[0],
-  gameState: 'PLAYING', // 'PLAYING' | 'ROUND_END'
+  gameState: 'PLAYING', // 'WAITING' | 'PLAYING' | 'ROUND_END'
   isTypingChat: false,
 
-  // 1P / 2P 물리 상태
-  p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.019, friction: 0.88 },
-  p2State: { vx: 0, vz: 0, accel: 0.025, friction: 0.80 },
+  // 1P / 2P 물리 상태 (60FPS 기준 deltaTime 정규화 속도)
+  p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86 },
+  p2State: { vx: 0, vz: 0, accel: 0.024, friction: 0.82 },
 
   // 2P AI 및 펜/색상 상태
-  aiTargetX: -6.2,
-  aiColorIdx: 4, // 검정색 발판부터 시작
+  aiTargetX: 1.1, // 기본 검정색 발판 위치
+  aiColorIdx: 4,  // 검정색 발판부터 시작
   aiTimer: 0,
   isPenDown: false,
-  wasOnTogglePad: false,
+  wasOnClearPad: false,
   activeColorHex: null,
-  activeColorName: '발판 대기',
+  activeColorName: '발판 대기 (OFF)',
 
   // 멀티플레이 상태
   myPeerId: 'local-1',

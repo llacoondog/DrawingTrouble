@@ -1,5 +1,5 @@
 // ==========================================
-// 반반 무마니 3D - Three.js 씬, 캐릭터, 캔버스, 파티클 (scene3d.js)
+// 반반 무마니 3D - Three.js 씬, 캐릭터('YOU' 화살표), 발판, 파티클 (scene3d.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -18,6 +18,79 @@ window.BanBan.Scene3D = (function () {
   const rippleGeo = new THREE.RingGeometry(0.75, 0.95, 28);
   rippleGeo.rotateX(-Math.PI / 2);
   const confettiGeo = new THREE.BoxGeometry(0.28, 0.08, 0.28);
+
+  // 2D 캔버스 텍스트 스프라이트 생성 헬퍼
+  function createTextSprite(text, bgColor, textColor, borderColor, scaleWidth = 2.1, scaleHeight = 0.65) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 80;
+    const c = canvas.getContext('2d');
+
+    c.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 둥근 캡슐 배경
+    const r = 24;
+    const x = 10, y = 10, w = canvas.width - 20, h = canvas.height - 20;
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+
+    c.fillStyle = bgColor;
+    c.fill();
+    if (borderColor) {
+      c.lineWidth = 5;
+      c.strokeStyle = borderColor;
+      c.stroke();
+    }
+
+    c.font = '900 30px Inter, Malgun Gothic, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = textColor;
+    c.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(scaleWidth, scaleHeight, 1);
+    sprite.renderOrder = 999;
+    return sprite;
+  }
+
+  // 캐릭터 머리 위 상단 'YOU' + 입체 화살표(▼) 마커 생성
+  function createYouMarker(roleType) {
+    const markerGroup = new THREE.Group();
+    markerGroup.position.set(0, 2.35, 0);
+
+    const isP1 = roleType === 'P1';
+    const badgeColor = isP1 ? '#ec4899' : '#06b6d4';
+    const coneColor = isP1 ? 0xf472b6 : 0x22d3ee;
+    const labelText = isP1 ? 'YOU (1P)' : 'YOU (2P)';
+
+    // 상단 'YOU' 텍스트 배지
+    const sprite = createTextSprite(labelText, badgeColor, '#ffffff', '#ffffff', 1.85, 0.58);
+    sprite.position.set(0, 0.42, 0);
+    markerGroup.add(sprite);
+
+    // 하단 가리키는 3D 역원뿔 화살표 (▼)
+    const arrowCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.38, 16),
+      new THREE.MeshBasicMaterial({ color: coneColor })
+    );
+    arrowCone.rotation.x = Math.PI; // 아래쪽을 가리키도록 회전
+    arrowCone.position.set(0, 0, 0);
+    markerGroup.add(arrowCone);
+
+    return markerGroup;
+  }
 
   function initScene(container) {
     scene = new THREE.Scene();
@@ -76,7 +149,7 @@ window.BanBan.Scene3D = (function () {
     drawingBoard.receiveShadow = true;
     scene.add(drawingBoard);
 
-    // 도화지 외곽 원목 액자 테두리 (Wooden Easel Frame)
+    // 도화지 외곽 원목 액자 테두리
     const frameGroup = new THREE.Group();
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.65 });
     const frameThickness = 0.5;
@@ -96,20 +169,33 @@ window.BanBan.Scene3D = (function () {
     });
     scene.add(frameGroup);
 
-    // 상단 2P 컨트롤 데크
+    // 상단 2P 컨트롤 데크 (우측 끝에 멀리 떨어진 도화지 지우기 버튼을 수용하도록 확장)
     const controlDeck = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 0.6, 4.2),
+      new THREE.BoxGeometry(17.6, 0.6, 4.4),
       new THREE.MeshStandardMaterial({ color: 0x262936, roughness: 0.5, metalness: 0.2 })
     );
-    controlDeck.position.set(0, -0.3, -6.8);
+    controlDeck.position.set(0.2, -0.3, -6.8);
     controlDeck.receiveShadow = true;
     scene.add(controlDeck);
 
-    // 컨트롤 데크 위 원통형 압력 발판(Pressure Pads) 및 베이스 링
+    // 색상 발판 구역과 우측 멀리 떨어진 [도화지 지우기] 구역 사이 경고 분리선
+    const dividerLine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.04, 3.8),
+      new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+    );
+    dividerLine.position.set(5.0, 0.02, -6.8);
+    scene.add(dividerLine);
+
+    // 컨트롤 데크 위 원통형 압력 발판(Pressure Pads) 및 라벨 생성
     Config.PADS_DATA.forEach(data => {
+      const isClearPad = data.type === 'clear';
       const baseRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.02, 1.08, 0.1, 24),
-        new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.4, metalness: 0.5 })
+        new THREE.CylinderGeometry(isClearPad ? 1.12 : 0.96, isClearPad ? 1.18 : 1.02, 0.1, 24),
+        new THREE.MeshStandardMaterial({
+          color: isClearPad ? 0xfbbf24 : 0x475569,
+          roughness: 0.4,
+          metalness: 0.5
+        })
       );
       baseRing.position.set(data.x, 0.05, data.z);
       baseRing.receiveShadow = true;
@@ -120,16 +206,29 @@ window.BanBan.Scene3D = (function () {
         roughness: 0.25,
         metalness: 0.1,
         emissive: data.color,
-        emissiveIntensity: 0.12
+        emissiveIntensity: isClearPad ? 0.28 : 0.12
       });
       const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.85, 0.92, 0.26, 24),
+        new THREE.CylinderGeometry(isClearPad ? 0.92 : 0.80, isClearPad ? 0.98 : 0.86, 0.26, 24),
         padMat
       );
       pad.position.set(data.x, 0.14, data.z);
       pad.receiveShadow = true;
       pad.castShadow = true;
       scene.add(pad);
+
+      // 발판 상단 3D 라벨 표시
+      const labelSprite = createTextSprite(
+        data.label,
+        isClearPad ? 'rgba(159, 18, 57, 0.92)' : 'rgba(15, 23, 42, 0.82)',
+        isClearPad ? '#fde047' : '#f8fafc',
+        isClearPad ? '#fb7185' : 'rgba(255,255,255,0.25)',
+        isClearPad ? 2.15 : 1.35,
+        isClearPad ? 0.52 : 0.42
+      );
+      labelSprite.position.set(data.x, 0.62, data.z + 0.65);
+      scene.add(labelSprite);
+
       padMeshes.push({ mesh: pad, mat: padMat, data, wasStepped: false });
     });
 
@@ -139,7 +238,26 @@ window.BanBan.Scene3D = (function () {
     scene.add(p1Obj.group);
     scene.add(p2Obj.group);
 
+    updateYouMarkersVisibility();
     window.addEventListener('resize', handleResize);
+  }
+
+  // 현재 조작 모드(P1 / P2 / BOTH / SPECTATOR)에 맞춰 'YOU' 화살표 노출 갱신
+  function updateYouMarkersVisibility() {
+    if (!p1Obj || !p2Obj) return;
+    if (State.controlMode === 'P1') {
+      p1Obj.youMarker.visible = true;
+      p2Obj.youMarker.visible = false;
+    } else if (State.controlMode === 'P2') {
+      p1Obj.youMarker.visible = false;
+      p2Obj.youMarker.visible = true;
+    } else if (State.controlMode === 'BOTH') {
+      p1Obj.youMarker.visible = true;
+      p2Obj.youMarker.visible = true;
+    } else {
+      p1Obj.youMarker.visible = false;
+      p2Obj.youMarker.visible = false;
+    }
   }
 
   function handleResize() {
@@ -184,7 +302,7 @@ window.BanBan.Scene3D = (function () {
     const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const blushMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.55 });
 
-    // 1) 통통한 젤리빈 캡슐 몸통 (실린더 + 상/하 반구)
+    // 1) 통통한 젤리빈 캡슐 몸통
     const torsoGroup = new THREE.Group();
     const midCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.48, 0.65, 24), jellyMat);
     midCyl.position.y = 0.72;
@@ -316,6 +434,10 @@ window.BanBan.Scene3D = (function () {
       animGroup.add(bulb);
     }
 
+    // 5) 머리 위 'YOU' 화살표 마커 부착 (회전 영향을 받지 않도록 root에 추가)
+    const youMarker = createYouMarker(roleType);
+    root.add(youMarker);
+
     return {
       group: root,
       animGroup,
@@ -325,18 +447,21 @@ window.BanBan.Scene3D = (function () {
       rightLeg,
       brushPivot,
       tipMat,
+      youMarker,
       targetAngle: 0
     };
   }
 
-  function updateCharacterVisuals(charObj, vx, vz, elapsedTime, isPenActive) {
+  function updateCharacterVisuals(charObj, vx, vz, elapsedTime, isPenActive, dtScale = 1) {
     const speed = Math.hypot(vx, vz);
+    const lerpFactor = 1 - Math.pow(0.75, dtScale);
+
     if (speed > 0.008) {
       charObj.targetAngle = Math.atan2(vx, vz);
       let diff = charObj.targetAngle - charObj.group.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      charObj.group.rotation.y += diff * 0.25;
+      charObj.group.rotation.y += diff * lerpFactor;
 
       const stride = elapsedTime * 18;
       const bounce = Math.abs(Math.sin(stride));
@@ -353,22 +478,30 @@ window.BanBan.Scene3D = (function () {
       charObj.leftArm.rotation.x = -swing * 0.8;
       charObj.rightArm.rotation.x = swing * 0.8;
     } else {
-      charObj.animGroup.position.y *= 0.8;
+      const decay = Math.pow(0.8, dtScale);
+      charObj.animGroup.position.y *= decay;
       const breathe = 1 + Math.sin(elapsedTime * 4) * 0.025;
       charObj.animGroup.scale.set(1 / Math.sqrt(breathe), breathe, 1 / Math.sqrt(breathe));
       charObj.leftLeg.position.z = 0.05;
       charObj.rightLeg.position.z = 0.05;
       charObj.leftLeg.position.y = 0.14;
       charObj.rightLeg.position.y = 0.14;
-      charObj.leftArm.rotation.x *= 0.8;
-      charObj.rightArm.rotation.x *= 0.8;
+      charObj.leftArm.rotation.x *= decay;
+      charObj.rightArm.rotation.x *= decay;
+    }
+
+    // 상단 'YOU' 화살표 위아래 통통 바운스 애니메이션 (캐릭터 회전과 무관하게 정면 유지)
+    if (charObj.youMarker && charObj.youMarker.visible) {
+      charObj.youMarker.position.y = 2.35 + Math.sin(elapsedTime * 6) * 0.14;
+      charObj.youMarker.rotation.y = -charObj.group.rotation.y;
     }
 
     if (charObj.brushPivot) {
       const targetPitch = isPenActive ? 0.55 : -0.45;
       const targetY = isPenActive ? 0.52 : 0.85;
-      charObj.brushPivot.rotation.x += (targetPitch - charObj.brushPivot.rotation.x) * 0.2;
-      charObj.brushPivot.position.y += (targetY - charObj.brushPivot.position.y) * 0.2;
+      const brushLerp = 1 - Math.pow(0.8, dtScale);
+      charObj.brushPivot.rotation.x += (targetPitch - charObj.brushPivot.rotation.x) * brushLerp;
+      charObj.brushPivot.position.y += (targetY - charObj.brushPivot.position.y) * brushLerp;
     }
   }
 
@@ -441,16 +574,16 @@ window.BanBan.Scene3D = (function () {
     padRipples.length = 0;
   }
 
-  function updateParticles() {
+  function updateParticles(dtScale = 1) {
     // 1) 3D 물감 방울 파티클 업데이트
     for (let i = paintDroplets.length - 1; i >= 0; i--) {
       const d = paintDroplets[i];
-      d.vy -= 0.008;
-      d.mesh.position.x += d.vx;
-      d.mesh.position.y += d.vy;
-      d.mesh.position.z += d.vz;
-      d.life -= 0.035;
-      d.mesh.scale.multiplyScalar(0.95);
+      d.vy -= 0.008 * dtScale;
+      d.mesh.position.x += d.vx * dtScale;
+      d.mesh.position.y += d.vy * dtScale;
+      d.mesh.position.z += d.vz * dtScale;
+      d.life -= 0.035 * dtScale;
+      d.mesh.scale.multiplyScalar(Math.pow(0.95, dtScale));
 
       if (d.mesh.position.y <= 0.03 || d.life <= 0) {
         scene.remove(d.mesh);
@@ -461,8 +594,8 @@ window.BanBan.Scene3D = (function () {
     // 2) 발판 파동(Ripple) 링 업데이트
     for (let i = padRipples.length - 1; i >= 0; i--) {
       const r = padRipples[i];
-      r.scale += 0.06;
-      r.opacity -= 0.04;
+      r.scale += 0.06 * dtScale;
+      r.opacity -= 0.04 * dtScale;
       r.mesh.scale.set(r.scale, 1, r.scale);
       r.mat.opacity = Math.max(0, r.opacity);
       if (r.opacity <= 0) {
@@ -475,18 +608,19 @@ window.BanBan.Scene3D = (function () {
     // 3) 3D 폭죽(Confetti) 중력 물리 업데이트
     for (let i = confettiParticles.length - 1; i >= 0; i--) {
       const p = confettiParticles[i];
-      p.vy -= 0.009;
-      p.mesh.position.x += p.vx;
-      p.mesh.position.y += p.vy;
-      p.mesh.position.z += p.vz;
-      p.mesh.rotation.x += p.rx;
-      p.mesh.rotation.y += p.ry;
-      p.mesh.rotation.z += p.rz;
+      p.vy -= 0.009 * dtScale;
+      p.mesh.position.x += p.vx * dtScale;
+      p.mesh.position.y += p.vy * dtScale;
+      p.mesh.position.z += p.vz * dtScale;
+      p.mesh.rotation.x += p.rx * dtScale;
+      p.mesh.rotation.y += p.ry * dtScale;
+      p.mesh.rotation.z += p.rz * dtScale;
 
       if (p.mesh.position.y < 0.05) {
         p.mesh.position.y = 0.05;
-        p.vx *= 0.8;
-        p.vz *= 0.8;
+        const groundFriction = Math.pow(0.8, dtScale);
+        p.vx *= groundFriction;
+        p.vz *= groundFriction;
         p.vy = 0;
       }
     }
@@ -543,6 +677,7 @@ window.BanBan.Scene3D = (function () {
     initScene,
     clearCanvas,
     loadCanvasFromDataURL,
+    updateYouMarkersVisibility,
     updateCharacterVisuals,
     spawnPaintSplatter,
     spawnPadRipple,

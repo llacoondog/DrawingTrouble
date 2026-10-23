@@ -29,23 +29,19 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
-      <!-- 펜 ON/OFF 상태 -->
+      <!-- 펜 ON/OFF 상태 (2P가 색 발판을 밟고 있을 때만 자동 ON) -->
       <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
-        <span class="text-slate-400">펜:</span>
-        <span id="pen-status" class="text-rose-500 font-extrabold">OFF</span>
+        <span class="text-slate-400">붓 상태:</span>
+        <span id="pen-status" class="text-rose-500 font-extrabold">OFF (발판 떨어짐)</span>
       </div>
       <!-- 현재 공급 중인 색상 -->
       <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
         <div id="color-preview" class="w-3.5 h-3.5 rounded-full border-2 border-white" style="background: transparent;"></div>
         <span id="color-name" class="text-slate-200">발판 대기</span>
       </div>
-      <!-- 도화지 초기화 버튼 -->
-      <button id="btn-clear" class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow">
-        도화지 지우기
-      </button>
-      <!-- 무료 P2P 멀티플레이 방 만들기/입장 버튼 -->
+      <!-- 멀티플레이 대기방 열기 버튼 -->
       <button id="btn-open-multi" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-lg border border-purple-400/50 flex items-center gap-1.5">
-        <span>🌐 멀티플레이 방 만들기 / 입장</span>
+        <span>🌐 멀티플레이 대기방</span>
       </button>
     </div>
   </div>
@@ -67,7 +63,7 @@
     <button id="btn-ai-p2" class="bg-emerald-500 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-xl text-xs font-extrabold shadow transition hover:brightness-110">
       🤖 2P 자동 도우미: ON
     </button>
-    <div id="p2p-status-badge" class="hidden items-center gap-1.5 bg-purple-950/90 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow">
+    <div id="p2p-status-badge" class="hidden items-center gap-1.5 bg-purple-950/90 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow cursor-pointer" title="클릭하여 대기방 보기">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
       <span id="p2p-status-text">P2P 대기중</span>
     </div>
@@ -80,17 +76,17 @@
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">W</kbd>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">A</kbd>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">S</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">D</kbd> 이동 (물감 위 미끄러짐 주의!)
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">D</kbd> 이동 (머리 위 <b>YOU ▼</b> 화살표 확인!)
     </div>
     <div class="text-slate-200 mt-1">
       🕹️ <b>2P 팔레트 엔지니어 (상단 데크):</b>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↑</kbd>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">←</kbd>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↓</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">→</kbd> 발판 밟기
+      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">→</kbd> <b>색 발판을 밟고 있는 동안만 펜 ON!</b>
     </div>
-    <div class="text-slate-400 mt-1">
-      💡 화면 클릭 후 키보드로 움직이거나, 우측 채팅창에 제시어를 입력해 정답 폭죽을 터뜨려 보세요!
+    <div class="text-rose-300 mt-1 font-semibold">
+      💥 <b>도화지 지우기:</b> 2P가 상단 데크 오른쪽 끝 멀리 있는 <b>[💥도화지 지우기]</b> 발판을 밟으면 초기화!
     </div>
   </div>
 
@@ -154,43 +150,80 @@
     </div>
   </div>
 
-  <!-- 🌐 무료 P2P & Socket.io 하이브리드 멀티플레이 방 만들기 / 입장 모달 -->
+  <!-- 🌐 멀티플레이 로비 & 대기방(Waiting Room) 모달 -->
   <div id="multi-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
     <div class="modal-pop bg-[#1b1f2b] border border-purple-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-left relative">
       <button id="btn-close-multi" class="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold bg-white/5 px-2.5 py-1 rounded-lg">✕ 닫기</button>
       <div class="flex items-center gap-2 mb-1">
         <span id="mp-mode-badge" class="bg-purple-600 text-white text-xs font-extrabold px-2.5 py-1 rounded-lg">100% 무료 P2P</span>
-        <h2 class="text-xl font-black text-white">멀티플레이 로비</h2>
+        <h2 class="text-xl font-black text-white">멀티플레이 대기방</h2>
       </div>
       <p id="mp-mode-desc" class="text-xs text-slate-400 mb-4 leading-relaxed">
-        유료 호스팅 없이도 <b>WebRTC(PeerJS)</b> 또는 <b>경량 Node 서버(Socket.io)</b>를 자동 감지해 연결합니다. 방 코드나 초대 링크를 친구에게 보내 함께 플레이하세요!
+        방을 만들거나 입장하면 <b>대기방</b>에서 참가자와 역할(1P/2P/구경꾼)을 확인한 뒤 방장이 게임을 시작합니다!
       </p>
 
-      <div class="space-y-3 mb-4">
-        <div>
-          <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
-          <input id="mp-nickname" type="text" maxlength="10" placeholder="예: 피카소지우" value="열정화가" class="w-full bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none" />
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-slate-300 mb-1">방 코드 (영문/숫자 4~8자리)</label>
-          <div class="flex gap-1.5">
-            <input id="mp-roomcode" type="text" maxlength="10" placeholder="예: PARTY7" value="PARTY7" class="flex-1 min-w-0 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm font-extrabold tracking-wider text-amber-300 uppercase outline-none" />
-            <button id="btn-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">코드 복사</button>
-            <button id="btn-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">🔗 링크 복사</button>
+      <!-- [1단계] 방 생성 / 입장 입력 뷰 -->
+      <div id="mp-connect-view">
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
+            <input id="mp-nickname" type="text" maxlength="10" placeholder="예: 피카소지우" value="열정화가" class="w-full bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">방 코드 (영문/숫자 4~8자리)</label>
+            <div class="flex gap-1.5">
+              <input id="mp-roomcode" type="text" maxlength="10" placeholder="예: PARTY7" value="PARTY7" class="flex-1 min-w-0 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm font-extrabold tracking-wider text-amber-300 uppercase outline-none" />
+              <button id="btn-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">코드 복사</button>
+              <button id="btn-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 rounded-xl transition whitespace-nowrap">🔗 링크 복사</button>
+            </div>
           </div>
         </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+          <button id="btn-host-room" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
+            <span>👑 대기방 만들기 (방장)</span>
+          </button>
+          <button id="btn-join-room" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
+            <span>🚀 친구 대기방 입장</span>
+          </button>
+        </div>
       </div>
 
-      <div id="mp-feedback" class="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-xl px-3 py-2 mb-4 hidden"></div>
+      <!-- [2단계] 방 접속 완료 후 대기방(Waiting Room) 뷰 -->
+      <div id="mp-waiting-view" class="hidden">
+        <div class="bg-[#12141c] border border-white/10 rounded-2xl p-3.5 mb-3">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <span class="text-[11px] text-slate-400 block">현재 접속된 대기방 코드</span>
+              <span id="waiting-room-code" class="text-lg font-black text-amber-300 tracking-wider">PARTY7</span>
+            </div>
+            <div class="flex gap-1.5">
+              <button id="btn-waiting-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition">📋 코드 복사</button>
+              <button id="btn-waiting-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition">🔗 초대 링크</button>
+            </div>
+          </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <button id="btn-host-room" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
-          <span>👑 방 만들기 (1P 호스트)</span>
+          <div class="border-t border-white/10 pt-2.5 mt-2">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-300">👥 대기방 참가자 및 역할 배정</span>
+              <button id="btn-swap-roles" class="hidden bg-pink-600/30 hover:bg-pink-600/50 border border-pink-400/40 text-pink-200 text-[11px] font-bold px-2.5 py-1 rounded-lg transition">
+                🔄 역할 로테이션
+              </button>
+            </div>
+            <div id="waiting-player-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+
+        <!-- 방장용 게임 시작 버튼 / 게스트용 대기 안내 -->
+        <button id="btn-start-mp-game" class="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black py-3.5 px-4 rounded-2xl text-sm shadow-xl transition mb-2">
+          🎮 게임 시작! (모두 함께 ROUND 1 출발)
         </button>
-        <button id="btn-join-room" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1.5">
-          <span>🚀 친구 방 입장하기</span>
-        </button>
+        <div id="waiting-guest-notice" class="hidden w-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-200 font-bold py-3 px-4 rounded-2xl text-xs text-center mb-2">
+          ⏳ 방장이 [게임 시작]을 누르면 동시에 라운드가 시작됩니다...
+        </div>
       </div>
+
+      <div id="mp-feedback" class="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-xl px-3 py-2 mt-2 hidden"></div>
     </div>
   </div>
 
