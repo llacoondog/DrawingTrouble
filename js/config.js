@@ -195,9 +195,9 @@ window.BanBan.State = {
     face: 'NORMAL'
   },
 
-  // 1P / 2P 물리 상태 (60FPS 기준 deltaTime 정규화 속도)
-  p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86 },
-  p2State: { vx: 0, vz: 0, accel: 0.024, friction: 0.82 },
+  // 1P / 2P 물리 및 점프 상태 (60FPS 기준 deltaTime 정규화 속도)
+  p1State: { vx: 0, vz: 0, y: 0, vy: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86, jumpForce: 0.27, gravity: 0.015 },
+  p2State: { vx: 0, vz: 0, y: 0, vy: 0, accel: 0.024, friction: 0.82, jumpForce: 0.27, gravity: 0.015 },
 
   // 펜/색상/굵기/사운드 상태
   isPenDown: false,

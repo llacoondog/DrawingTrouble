@@ -851,11 +851,33 @@ window.BanBan.Scene3D = (function () {
     return charObj;
   }
 
-  function updateCharacterVisuals(charObj, vx, vz, elapsedTime, isPenActive, dtScale = 1) {
+  function updateCharacterVisuals(charObj, vx, vz, elapsedTime, isPenActive, dtScale = 1, jumpY = 0, jumpVy = 0) {
     const speed = Math.hypot(vx, vz);
     const lerpFactor = 1 - Math.pow(0.75, dtScale);
 
-    if (speed > 0.008) {
+    // 점프 높이를 캐릭터 루트 그룹 Y 좌표에 반영
+    charObj.group.position.y = Math.max(0, jumpY);
+
+    if (jumpY > 0.04) {
+      // 마리오 점프 중 포즈: 이동 방향 회전 + 몸통 스트레치 & 팔 만세 포즈
+      if (speed > 0.008) {
+        charObj.targetAngle = Math.atan2(vx, vz);
+        let diff = charObj.targetAngle - charObj.group.rotation.y;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        charObj.group.rotation.y += diff * lerpFactor;
+      }
+      charObj.animGroup.position.y = 0;
+      const stretch = 1 + Math.max(-0.10, Math.min(0.18, jumpVy * 0.65));
+      const squash = 1 / Math.sqrt(stretch);
+      charObj.animGroup.scale.set(squash, stretch, squash);
+      charObj.leftLeg.position.y = 0.22;
+      charObj.rightLeg.position.y = 0.08;
+      charObj.leftLeg.position.z = -0.10;
+      charObj.rightLeg.position.z = 0.16;
+      charObj.leftArm.rotation.x = -2.3;
+      charObj.rightArm.rotation.x = -0.9;
+    } else if (speed > 0.008) {
       charObj.targetAngle = Math.atan2(vx, vz);
       let diff = charObj.targetAngle - charObj.group.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1055,6 +1077,13 @@ window.BanBan.Scene3D = (function () {
   }
 
   function paintStrokeOnBoard() {
+    // 1P가 점프 중(공중 체공 중)일 때는 도화지에 붓이 닿지 않으며 이전 궤적을 끊어줍니다.
+    if ((State.p1State.y || 0) > 0.04) {
+      State.p1State.prevX = null;
+      State.p1State.prevZ = null;
+      return;
+    }
+
     const CANVAS_SIZE = Config.CANVAS_SIZE;
     const uvX = (p1Obj.group.position.x + CANVAS_SIZE / 2) / CANVAS_SIZE;
     const uvY = (p1Obj.group.position.z - (2.2 - CANVAS_SIZE / 2)) / CANVAS_SIZE;

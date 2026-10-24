@@ -273,11 +273,15 @@ window.BanBan.Network = (function () {
     const { p1Obj, p2Obj, drawCanvas } = Scene3D.getSceneObjects();
 
     if (data.type === 'MOVE_P1' && State.controlMode !== 'P1') {
-      p1Obj.group.position.set(data.x, 0, data.z);
+      State.p1State.y = typeof data.y === 'number' ? data.y : 0;
+      State.p1State.vy = typeof data.vy === 'number' ? data.vy : 0;
+      p1Obj.group.position.set(data.x, State.p1State.y, data.z);
       State.p1State.vx = typeof data.vx === 'number' ? data.vx : 0;
       State.p1State.vz = typeof data.vz === 'number' ? data.vz : 0;
     } else if (data.type === 'MOVE_P2' && State.controlMode !== 'P2') {
-      p2Obj.group.position.set(data.x, 0, data.z);
+      State.p2State.y = typeof data.y === 'number' ? data.y : 0;
+      State.p2State.vy = typeof data.vy === 'number' ? data.vy : 0;
+      p2Obj.group.position.set(data.x, State.p2State.y, data.z);
       State.p2State.vx = typeof data.vx === 'number' ? data.vx : 0;
       State.p2State.vz = typeof data.vz === 'number' ? data.vz : 0;
       State.isPenDown = Boolean(data.isPenDown);

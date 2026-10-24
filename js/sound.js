@@ -95,6 +95,14 @@ window.BanBan.Sound = (function () {
     playTone(660, 'sine', 0.055, 0.09, 880, 0);
   }
 
+  // 4-2) 마리오 스타일 통통 점프 효과음 (피융~!)
+  function playJump(isP2 = false) {
+    const startFreq = isP2 ? 310 : 350;
+    const endFreq = isP2 ? 720 : 820;
+    playTone(startFreq, 'square', 0.14, 0.08, endFreq, 0);
+    playTone(startFreq * 1.25, 'sine', 0.16, 0.12, endFreq * 1.2, 0.01);
+  }
+
   // 5) 제시어 확정 & 라운드 출발 벨
   function playRoundStart() {
     playTone(523.25, 'triangle', 0.12, 0.15, null, 0.00); // 도
@@ -134,6 +142,7 @@ window.BanBan.Sound = (function () {
     playBrushSize,
     playClearCanvas,
     playClick,
+    playJump,
     playRoundStart,
     playHint,
     playTick,

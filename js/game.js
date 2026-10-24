@@ -29,7 +29,19 @@ window.onload = function () {
   const entryNicknameEl = document.getElementById('entry-nickname');
   let lastSteppedPadId = null;
 
-  function updatePadStepHUD(padData) {
+  function updatePadStepHUD(padData, isP2Airborne = false) {
+    if (isP2Airborne) {
+      if (lastSteppedPadId !== '__JUMPING__') {
+        lastSteppedPadId = '__JUMPING__';
+        if (padToastEl) {
+          padToastEl.classList.add('hidden');
+          padToastEl.classList.remove('flex', 'pad-toast-active');
+        }
+        Scene3D.updateP2StepBubble('🦘 점프 중! (발판 패스)', '#6366f1', '#fef08a');
+      }
+      return;
+    }
+
     if (!padData) {
       if (lastSteppedPadId !== null) {
         lastSteppedPadId = null;
@@ -464,6 +476,7 @@ window.onload = function () {
     p1Obj.group.position.set(0, 0, 2.2);
     p2Obj.group.position.set(0.3, 0, -6.8);
     State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
+    State.p1State.y = State.p1State.vy = State.p2State.y = State.p2State.vy = 0;
     State.isPenDown = false;
     State.wasOnClearPad = false;
     State.wasOnSizePad = false;
@@ -571,6 +584,7 @@ window.onload = function () {
     p1Obj.group.position.set(0, 0, 2.2);
     p2Obj.group.position.set(0.3, 0, -6.8);
     State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
+    State.p1State.y = State.p1State.vy = State.p2State.y = State.p2State.vy = 0;
     State.isPenDown = false;
     State.wasOnClearPad = false;
     State.wasOnSizePad = false;
@@ -701,7 +715,12 @@ window.onload = function () {
 
   // 7. 키보드 및 마우스/터치 입력
   window.addEventListener('keydown', (e) => {
-    if (!State.isTypingChat) keys[e.code] = true;
+    if (!State.isTypingChat) {
+      if (e.code === 'Space') {
+        e.preventDefault();
+      }
+      keys[e.code] = true;
+    }
   });
   window.addEventListener('keyup', (e) => {
     keys[e.code] = false;
@@ -736,7 +755,10 @@ window.onload = function () {
     if (State.gameState === 'PLAYING') {
       const { p1State, p2State } = State;
 
-      // --- 1P 브러시 러너 이동 ---
+      // --- 1P 브러시 러너 이동 및 점프 ---
+      const isWasdHeld = Boolean(keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
+      const isArrowHeld = Boolean(keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight']);
+
       if (State.controlMode === 'BOTH' || State.controlMode === 'P1') {
         let ix1 = 0;
         let iz1 = 0;
@@ -761,6 +783,22 @@ window.onload = function () {
           }
         }
 
+        // 스페이스바 점프: 1P 전용 모드이거나, 동시 조작(BOTH)에서 방향키만 단독으로 누르고 있지 않을 때 1P 점프
+        const shouldP1Jump = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && (isWasdHeld || !isArrowHeld));
+        if (keys['Space'] && shouldP1Jump && p1State.y <= 0.001 && p1State.vy <= 0) {
+          p1State.vy = p1State.jumpForce;
+          if (Sound) Sound.playJump(false);
+        }
+
+        if (p1State.y > 0 || p1State.vy !== 0) {
+          p1State.y += p1State.vy * dtScale;
+          p1State.vy -= p1State.gravity * dtScale;
+          if (p1State.y <= 0) {
+            p1State.y = 0;
+            p1State.vy = 0;
+          }
+        }
+
         const f1 = Math.pow(p1State.friction, dtScale);
         p1State.vx *= f1;
         p1State.vz *= f1;
@@ -771,18 +809,28 @@ window.onload = function () {
         p1Obj.group.position.x = Math.max(-halfBoard, Math.min(halfBoard, p1Obj.group.position.x));
         p1Obj.group.position.z = Math.max(2.2 - halfBoard, Math.min(2.2 + halfBoard, p1Obj.group.position.z));
 
-        if (Math.hypot(p1State.vx, p1State.vz) > 0.001) {
+        if (Math.hypot(p1State.vx, p1State.vz) > 0.001 || p1State.y > 0.001 || Math.abs(p1State.vy) > 0.001) {
           Network.sendNetworkPacket({
             type: 'MOVE_P1',
             x: p1Obj.group.position.x,
+            y: p1State.y,
             z: p1Obj.group.position.z,
             vx: p1State.vx,
+            vy: p1State.vy,
             vz: p1State.vz
           });
         }
+      } else if (p1State.y > 0 || p1State.vy !== 0) {
+        // 원격 1P 점프 중력 보간
+        p1State.y += p1State.vy * dtScale;
+        p1State.vy -= p1State.gravity * dtScale;
+        if (p1State.y <= 0) {
+          p1State.y = 0;
+          p1State.vy = 0;
+        }
       }
 
-      // --- 2P 팔레트 엔지니어 이동 ---
+      // --- 2P 팔레트 엔지니어 이동 및 점프 ---
       if (State.controlMode === 'BOTH' || State.controlMode === 'P2') {
         let ix2 = 0;
         let iz2 = 0;
@@ -797,17 +845,42 @@ window.onload = function () {
           p2State.vz += (iz2 / len2) * p2State.accel * dtScale;
         }
 
+        // 스페이스바 점프: 2P 전용 모드이거나, 동시 조작(BOTH)에서 WASD만 단독으로 누르고 있지 않을 때 2P 점프
+        const shouldP2Jump = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && (isArrowHeld || !isWasdHeld));
+        if (keys['Space'] && shouldP2Jump && p2State.y <= 0.001 && p2State.vy <= 0) {
+          p2State.vy = p2State.jumpForce;
+          if (Sound) Sound.playJump(true);
+        }
+
+        if (p2State.y > 0 || p2State.vy !== 0) {
+          p2State.y += p2State.vy * dtScale;
+          p2State.vy -= p2State.gravity * dtScale;
+          if (p2State.y <= 0) {
+            p2State.y = 0;
+            p2State.vy = 0;
+          }
+        }
+
         const f2 = Math.pow(p2State.friction, dtScale);
         p2State.vx *= f2;
         p2State.vz *= f2;
         p2Obj.group.position.x += p2State.vx * dtScale;
         p2Obj.group.position.z += p2State.vz * dtScale;
+      } else if (p2State.y > 0 || p2State.vy !== 0) {
+        // 원격 2P 점프 중력 보간
+        p2State.y += p2State.vy * dtScale;
+        p2State.vy -= p2State.gravity * dtScale;
+        if (p2State.y <= 0) {
+          p2State.y = 0;
+          p2State.vy = 0;
+        }
       }
 
       p2Obj.group.position.x = Math.max(-7.8, Math.min(8.2, p2Obj.group.position.x));
       p2Obj.group.position.z = Math.max(-8.5, Math.min(-5.1, p2Obj.group.position.z));
 
-      // --- 2P 발판 충돌 판정 ---
+      // --- 2P 발판 충돌 판정 (점프 중에는 발판 밟기 판정 무시!) ---
+      const isP2Airborne = (p2State.y || 0) > 0.04;
       let steppedColorHex = null;
       let steppedColorName = '발판 대기 (OFF)';
       let steppedPadData = null;
@@ -819,7 +892,7 @@ window.onload = function () {
       padMeshes.forEach((padItem) => {
         const { mesh, mat, ringMat, labelSprite, baseScaleW, baseScaleH, defaultRingColor, data } = padItem;
         const dist = Math.hypot(p2Obj.group.position.x - data.x, p2Obj.group.position.z - data.z);
-        const isStepped = dist < 0.85;
+        const isStepped = !isP2Airborne && dist < 0.85;
 
         if (isStepped) {
           steppedPadData = data;
@@ -901,12 +974,14 @@ window.onload = function () {
         }
         State.wasOnClearPad = currentlyOnClear;
 
-        if (Math.hypot(p2State.vx, p2State.vz) > 0.001 || prevPenDown !== State.isPenDown || prevColorHex !== State.activeColorHex) {
+        if (Math.hypot(p2State.vx, p2State.vz) > 0.001 || p2State.y > 0.001 || Math.abs(p2State.vy) > 0.001 || prevPenDown !== State.isPenDown || prevColorHex !== State.activeColorHex) {
           Network.sendNetworkPacket({
             type: 'MOVE_P2',
             x: p2Obj.group.position.x,
+            y: p2State.y,
             z: p2Obj.group.position.z,
             vx: p2State.vx,
+            vy: p2State.vy,
             vz: p2State.vz,
             isPenDown: State.isPenDown,
             activeColorHex: State.activeColorHex,
@@ -921,10 +996,16 @@ window.onload = function () {
       }
 
       // 현재 밟고 있는 버튼 이름 3D 말풍선 + 상단 빅 배너 실시간 표시
-      updatePadStepHUD(steppedPadData);
+      updatePadStepHUD(steppedPadData, isP2Airborne);
 
-      uiPenStatus.textContent = State.isPenDown ? `ON (${State.activeColorName} 공급중)` : 'OFF (발판 떨어짐)';
-      uiPenStatus.className = State.isPenDown ? 'text-emerald-400 font-extrabold' : 'text-rose-500 font-extrabold';
+      const isP1Airborne = (p1State.y || 0) > 0.04;
+      if (isP1Airborne) {
+        uiPenStatus.textContent = '🦘 1P 점프 중 (붓 들림)';
+        uiPenStatus.className = 'text-amber-300 font-extrabold';
+      } else {
+        uiPenStatus.textContent = State.isPenDown ? `ON (${State.activeColorName} 공급중)` : 'OFF (발판 떨어짐)';
+        uiPenStatus.className = State.isPenDown ? 'text-emerald-400 font-extrabold' : 'text-rose-400 font-extrabold';
+      }
       uiColorPreview.style.background = State.activeColorHex || 'transparent';
       uiColorName.textContent = State.activeColorName;
       if (uiBrushSizeName) {
@@ -936,11 +1017,12 @@ window.onload = function () {
 
       Scene3D.paintStrokeOnBoard();
     } else {
-      updatePadStepHUD(null);
+      updatePadStepHUD(null, false);
     }
 
-    Scene3D.updateCharacterVisuals(p1Obj, State.p1State.vx, State.p1State.vz, elapsedTime, State.isPenDown, dtScale);
-    Scene3D.updateCharacterVisuals(p2Obj, State.p2State.vx, State.p2State.vz, elapsedTime, false, dtScale);
+    const isP1DrawingNow = State.isPenDown && (State.p1State.y || 0) <= 0.04;
+    Scene3D.updateCharacterVisuals(p1Obj, State.p1State.vx, State.p1State.vz, elapsedTime, isP1DrawingNow, dtScale, State.p1State.y || 0, State.p1State.vy || 0);
+    Scene3D.updateCharacterVisuals(p2Obj, State.p2State.vx, State.p2State.vz, elapsedTime, false, dtScale, State.p2State.y || 0, State.p2State.vy || 0);
     Scene3D.updateParticles(dtScale);
     Scene3D.renderFrame(elapsedTime, dtScale);
   }
