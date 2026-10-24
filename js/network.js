@@ -31,6 +31,15 @@ window.BanBan.Network = (function () {
     return found ? found.icon : '🎨';
   }
 
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderPlayerRoster() {
     // 3D 캐릭터(1P, 2P)에 로스터의 커스터마이징 외형 동기화
     Scene3D.syncRosterCustomizations();
@@ -44,17 +53,18 @@ window.BanBan.Network = (function () {
         const isMe = (!State.isP2PConnected && p.id === 'local-1') || (State.isP2PConnected && p.id === State.myPeerId);
         const meTag = isMe ? ' (나)' : '';
         const hatEmoji = getHatIcon(p.custom?.hat);
-        const dotColor = p.custom?.color || '#ec4899';
+        const dotColor = escapeHtml(p.custom?.color || '#ec4899');
+        const safeNick = escapeHtml(p.nickname);
 
         if (p.role === 'P1') {
           span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold flex items-center gap-1';
-          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 1P ${p.nickname}${meTag} (${p.score}점)</span>`;
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 1P ${safeNick}${meTag} (${p.score}점)</span>`;
         } else if (p.role === 'P2') {
           span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold flex items-center gap-1';
-          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 2P ${p.nickname}${meTag} (${p.score}점)</span>`;
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 2P ${safeNick}${meTag} (${p.score}점)</span>`;
         } else {
           span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold flex items-center gap-1';
-          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} ${p.nickname}${meTag} (${p.score}점)</span>`;
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} ${safeNick}${meTag} (${p.score}점)</span>`;
         }
         listEl.appendChild(span);
       });
@@ -83,12 +93,13 @@ window.BanBan.Network = (function () {
         const hostCrown = idx === 0 ? '👑 ' : '';
         const meBadge = isMe ? ' <span class="text-amber-300 font-extrabold">(나)</span>' : '';
         const hatEmoji = getHatIcon(p.custom?.hat);
-        const dotColor = p.custom?.color || '#ec4899';
+        const dotColor = escapeHtml(p.custom?.color || '#ec4899');
+        const safeNick = escapeHtml(p.nickname);
 
         row.innerHTML = `
           <div class="text-xs font-bold text-white flex items-center gap-1.5">
             <span class="w-3 h-3 rounded-full inline-block border border-white" style="background:${dotColor}"></span>
-            <span>${hatEmoji} ${hostCrown}${p.nickname}${meBadge}</span>
+            <span>${hatEmoji} ${hostCrown}${safeNick}${meBadge}</span>
           </div>
           <div>${roleBadge}</div>
         `;
@@ -177,6 +188,9 @@ window.BanBan.Network = (function () {
       if (hasHumanP2) {
         State.aiHelperEnabled = false;
         callbacks.onUpdateAiButtonUI();
+      } else if (me.role === 'P1') {
+        State.aiHelperEnabled = true;
+        callbacks.onUpdateAiButtonUI();
       }
 
       const modePrefix = isSocketServerAvailable ? '서버방' : 'P2P방';
@@ -206,7 +220,8 @@ window.BanBan.Network = (function () {
   }
 
   function sendNetworkPacket(payload) {
-    if (netChannel) {
+    // P2P 또는 Socket.io 서버 연결 중에는 BroadcastChannel 중복 전송을 방지합니다.
+    if (!State.isP2PConnected && netChannel) {
       try { netChannel.postMessage(payload); } catch (e) {}
     }
 
@@ -328,6 +343,9 @@ window.BanBan.Network = (function () {
         callbacks.onEndRound(true, data.winnerName, data.timeLeft, true);
       }
     } else if (data.type === 'NEXT_ROUND') {
+      if (typeof data.round === 'number' && data.round === State.currentRound && State.gameState !== 'ROUND_END') {
+        return;
+      }
       State.currentRound = data.round || (State.currentRound + 1);
       if (Array.isArray(data.candidateIndices)) {
         State.candidatePromptIndices = data.candidateIndices;
@@ -355,6 +373,9 @@ window.BanBan.Network = (function () {
       renderPlayerRoster();
       if (data.joinNotice) callbacks.onAddChatMessage('', data.joinNotice, 'system');
       if (data.leaveNotice) callbacks.onAddChatMessage('', data.leaveNotice, 'system');
+      if (data.p1ChangedDuringChoice && State.gameState === 'CHOOSING_WORD') {
+        callbacks.onStartWordSelection(true, data.candidateIndices || State.candidatePromptIndices);
+      }
     } else if (data.type === 'REQUEST_CANVAS_SYNC') {
       sendNetworkPacket({
         type: 'CANVAS_SYNC',
@@ -396,6 +417,9 @@ window.BanBan.Network = (function () {
             State.currentPromptIndex = data.promptIndex;
             State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
           }
+          if (Array.isArray(data.candidateIndices)) {
+            State.candidatePromptIndices = data.candidateIndices;
+          }
           State.playerRoster = data.roster || State.playerRoster;
           applyMyRoleFromRoster();
           renderPlayerRoster();
@@ -406,6 +430,9 @@ window.BanBan.Network = (function () {
           if (data.roomStatus === 'PLAYING') {
             closeMultiModal();
             callbacks.onWordSelected(State.currentPromptIndex, true);
+          } else if (data.roomStatus === 'CHOOSING_WORD') {
+            closeMultiModal();
+            callbacks.onStartWordSelection(true, State.candidatePromptIndices);
           } else {
             callbacks.onPauseForWaitingRoom();
             switchModalToWaitingView();
@@ -431,7 +458,11 @@ window.BanBan.Network = (function () {
 
     try {
       netChannel = new BroadcastChannel('banban_moomani_3d_sync');
-      netChannel.onmessage = (e) => handleIncomingPacket(e.data, null);
+      netChannel.onmessage = (e) => {
+        if (!State.isP2PConnected) {
+          handleIncomingPacket(e.data, null);
+        }
+      };
     } catch (err) {
       console.warn('BroadcastChannel not supported in this context.');
     }
@@ -560,6 +591,7 @@ window.BanBan.Network = (function () {
       const hostPeerId = Config.PEER_PREFIX + State.currentRoomCode;
 
       if (peer) peer.destroy();
+      guestConnections.length = 0;
       showMpFeedback(`⏳ 무서버 P2P 대기방 [${State.currentRoomCode}] 생성 중...`);
 
       peer = new Peer(hostPeerId);
@@ -622,6 +654,7 @@ window.BanBan.Network = (function () {
             assignedRole,
             round: State.currentRound,
             promptIndex: State.currentPromptIndex,
+            candidateIndices: State.candidatePromptIndices,
             roster: State.playerRoster,
             canvasDataUrl: State.gameState === 'PLAYING' ? drawCanvas.toDataURL('image/png') : null
           });
@@ -634,9 +667,38 @@ window.BanBan.Network = (function () {
 
         conn.on('data', (data) => handleIncomingPacket(data, conn));
         conn.on('close', () => {
+          const connIdx = guestConnections.indexOf(conn);
+          if (connIdx >= 0) guestConnections.splice(connIdx, 1);
+
+          const leaver = State.playerRoster.find(p => p.id === conn.peer);
           State.playerRoster = State.playerRoster.filter(p => p.id !== conn.peer);
+
+          const hasP1 = State.playerRoster.some(p => p.role === 'P1');
+          if (!hasP1 && State.playerRoster[0]) State.playerRoster[0].role = 'P1';
+          const hasP2 = State.playerRoster.some(p => p.role === 'P2');
+          if (!hasP2) {
+            const candidate = State.playerRoster.find(p => p.role !== 'P1');
+            if (candidate) candidate.role = 'P2';
+          }
+
+          applyMyRoleFromRoster();
           renderPlayerRoster();
-          sendNetworkPacket({ type: 'ROSTER_SYNC', roster: State.playerRoster });
+
+          const p1ChangedDuringChoice = State.gameState === 'CHOOSING_WORD' && leaver && leaver.role === 'P1';
+          const leaveNotice = leaver ? `💨 [${leaver.nickname}]님이 퇴장했습니다.` : null;
+          if (leaveNotice) callbacks.onAddChatMessage('', leaveNotice, 'system');
+
+          sendNetworkPacket({
+            type: 'ROSTER_SYNC',
+            roster: State.playerRoster,
+            candidateIndices: State.candidatePromptIndices,
+            p1ChangedDuringChoice,
+            leaveNotice
+          });
+
+          if (p1ChangedDuringChoice) {
+            callbacks.onStartWordSelection(true, State.candidatePromptIndices);
+          }
         });
       });
 
@@ -691,6 +753,9 @@ window.BanBan.Network = (function () {
               State.currentPromptIndex = data.promptIndex;
               State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
             }
+            if (Array.isArray(data.candidateIndices)) {
+              State.candidatePromptIndices = data.candidateIndices;
+            }
             State.playerRoster = data.roster || State.playerRoster;
             applyMyRoleFromRoster();
             renderPlayerRoster();
@@ -704,7 +769,11 @@ window.BanBan.Network = (function () {
 
             if (data.roomStatus === 'PLAYING') {
               closeMultiModal();
+              callbacks.onWordSelected(State.currentPromptIndex, true);
               callbacks.onAddChatMessage('', `🚀 진행 중인 방 [${State.currentRoomCode}]에 합류했습니다!`, 'system');
+            } else if (data.roomStatus === 'CHOOSING_WORD') {
+              closeMultiModal();
+              callbacks.onStartWordSelection(true, State.candidatePromptIndices);
             } else {
               callbacks.onPauseForWaitingRoom();
               switchModalToWaitingView();

@@ -95,10 +95,29 @@ window.BanBan.Scene3D = (function () {
     return markerGroup;
   }
 
+  // Three.js 메쉬/머티리얼 메모리 해제 헬퍼
+  function disposeObject3D(obj) {
+    if (!obj) return;
+    obj.traverse(child => {
+      if (child.geometry && child.geometry !== dropletGeo && child.geometry !== rippleGeo && child.geometry !== confettiGeo) {
+        child.geometry.dispose();
+      }
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m && m.dispose && m.dispose());
+        } else if (child.material.dispose) {
+          child.material.dispose();
+        }
+      }
+    });
+  }
+
   // 3D 모자/머리장식 메쉬 생성기 (7종)
   function populateHatGroup(hatGroup, hatId, tipMat) {
     while (hatGroup.children.length > 0) {
-      hatGroup.remove(hatGroup.children[0]);
+      const child = hatGroup.children[0];
+      hatGroup.remove(child);
+      disposeObject3D(child);
     }
     hatGroup.userData.propellerBlade = null;
     hatGroup.userData.haloRing = null;
@@ -215,7 +234,9 @@ window.BanBan.Scene3D = (function () {
   // 3D 얼굴/눈 표정 생성기 (4종: NORMAL, COOL, HAPPY, STAR)
   function populateFaceGroup(faceGroup, faceId) {
     while (faceGroup.children.length > 0) {
-      faceGroup.remove(faceGroup.children[0]);
+      const child = faceGroup.children[0];
+      faceGroup.remove(child);
+      disposeObject3D(child);
     }
 
     const darkMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
@@ -804,11 +825,20 @@ window.BanBan.Scene3D = (function () {
   }
 
   function clearConfetti() {
-    confettiParticles.forEach(p => scene.remove(p.mesh));
+    confettiParticles.forEach(p => {
+      scene.remove(p.mesh);
+      if (p.mesh.material) p.mesh.material.dispose();
+    });
     confettiParticles.length = 0;
-    paintDroplets.forEach(d => scene.remove(d.mesh));
+    paintDroplets.forEach(d => {
+      scene.remove(d.mesh);
+      if (d.mesh.material) d.mesh.material.dispose();
+    });
     paintDroplets.length = 0;
-    padRipples.forEach(r => scene.remove(r.mesh));
+    padRipples.forEach(r => {
+      scene.remove(r.mesh);
+      if (r.mat) r.mat.dispose();
+    });
     padRipples.length = 0;
   }
 
@@ -824,6 +854,7 @@ window.BanBan.Scene3D = (function () {
 
       if (d.mesh.position.y <= 0.03 || d.life <= 0) {
         scene.remove(d.mesh);
+        if (d.mesh.material) d.mesh.material.dispose();
         paintDroplets.splice(i, 1);
       }
     }
@@ -877,10 +908,18 @@ window.BanBan.Scene3D = (function () {
       ctx.lineJoin = 'round';
 
       if (State.p1State.prevX !== null && State.p1State.prevZ !== null) {
-        ctx.beginPath();
-        ctx.moveTo(State.p1State.prevX, State.p1State.prevZ);
-        ctx.lineTo(pixelX, pixelY);
-        ctx.stroke();
+        // 원격 패킷 지연 등으로 이전 좌표와 현재 좌표가 비정상적으로 멀리 뛴 경우(순간이동) 직선 연결 방지
+        const jumpDist = Math.hypot(pixelX - State.p1State.prevX, pixelY - State.p1State.prevZ);
+        if (jumpDist < 180) {
+          ctx.beginPath();
+          ctx.moveTo(State.p1State.prevX, State.p1State.prevZ);
+          ctx.lineTo(pixelX, pixelY);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(pixelX, pixelY, ctx.lineWidth / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else {
         ctx.beginPath();
         ctx.arc(pixelX, pixelY, ctx.lineWidth / 2, 0, Math.PI * 2);

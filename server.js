@@ -22,9 +22,10 @@ function getOrCreateRoom(roomCode) {
   if (!rooms.has(roomCode)) {
     rooms.set(roomCode, {
       code: roomCode,
-      status: 'WAITING', // 'WAITING' | 'PLAYING'
+      status: 'WAITING', // 'WAITING' | 'CHOOSING_WORD' | 'PLAYING'
       round: 1,
       promptIndex: 0,
+      candidateIndices: [0, 1, 2],
       roster: []
     });
   }
@@ -78,6 +79,7 @@ io.on('connection', (socket) => {
       assignedRole,
       round: room.round,
       promptIndex: room.promptIndex,
+      candidateIndices: room.candidateIndices || [0, 1, 2],
       roster: room.roster
     });
 
@@ -157,6 +159,8 @@ io.on('connection', (socket) => {
         type: 'ROSTER_SYNC',
         roster: room.roster,
         roomStatus: room.status,
+        candidateIndices: room.candidateIndices,
+        p1ChangedDuringChoice: room.status === 'CHOOSING_WORD' && leaver && leaver.role === 'P1',
         leaveNotice: leaver ? `💨 [${leaver.nickname}]님이 퇴장했습니다.` : null
       });
     }

@@ -21,11 +21,17 @@ window.onload = function () {
   const entryScreenEl = document.getElementById('entry-screen');
   const entryNicknameEl = document.getElementById('entry-nickname');
 
+  const keys = {};
+  function clearAllKeys() {
+    Object.keys(keys).forEach(k => { keys[k] = false; });
+  }
+  window.addEventListener('blur', clearAllKeys);
+
   // 3. 접속 대기화면 & 캐릭터 커스터마이징 UI 초기화
   function initCustomizerUI() {
     if (entryNicknameEl) {
       entryNicknameEl.value = State.myNickname;
-      entryNicknameEl.addEventListener('focus', () => { State.isTypingChat = true; });
+      entryNicknameEl.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
       entryNicknameEl.addEventListener('blur', () => { State.isTypingChat = false; });
       entryNicknameEl.addEventListener('input', () => {
         State.myNickname = (entryNicknameEl.value || '열정화가').trim().slice(0, 10);
@@ -238,14 +244,14 @@ window.onload = function () {
   });
 
   // 5. 실시간 채팅 & 라운드 진행 제어
-  chatInputEl.addEventListener('focus', () => { State.isTypingChat = true; });
+  chatInputEl.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
   chatInputEl.addEventListener('blur', () => { State.isTypingChat = false; });
 
   const mpNicknameEl = document.getElementById('mp-nickname');
   const mpRoomcodeEl = document.getElementById('mp-roomcode');
   [mpNicknameEl, mpRoomcodeEl].forEach(el => {
     if (el) {
-      el.addEventListener('focus', () => { State.isTypingChat = true; });
+      el.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
       el.addEventListener('blur', () => { State.isTypingChat = false; });
     }
   });
@@ -263,7 +269,14 @@ window.onload = function () {
       div.textContent = text;
     } else {
       div.className = 'px-2.5 py-1.5 rounded-xl bg-white/5 break-words';
-      div.innerHTML = `<span class="font-bold text-slate-400 mr-1.5">${sender}:</span><span class="text-slate-100">${text}</span>`;
+      const senderSpan = document.createElement('span');
+      senderSpan.className = 'font-bold text-slate-400 mr-1.5';
+      senderSpan.textContent = `${sender}:`;
+      const textSpan = document.createElement('span');
+      textSpan.className = 'text-slate-100';
+      textSpan.textContent = text;
+      div.appendChild(senderSpan);
+      div.appendChild(textSpan);
     }
     chatMessagesEl.appendChild(div);
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
@@ -302,6 +315,12 @@ window.onload = function () {
     const senderName = State.myNickname || '나';
 
     if (State.gameState === 'PLAYING' && normalizeAnswer(rawText) === normalizeAnswer(State.currentPrompt.word)) {
+      const hasSpectators = State.isP2PConnected && State.playerRoster.some(p => p.role === 'SPECTATOR');
+      if (hasSpectators && State.controlMode !== 'SPECTATOR') {
+        addChatMessage('', '⚠️ 구경꾼(정답자)이 있는 멀티플레이 방에서는 출제자(1P/2P)가 정답을 직접 입력할 수 없습니다!', 'system');
+        return;
+      }
+
       addChatMessage('', `🎊 [${senderName}]님이 정답 [${State.currentPrompt.word}] 판정 성공!`, 'correct');
       endRound(true, senderName, State.timeLeft, false);
       Network.sendNetworkPacket({
@@ -323,6 +342,7 @@ window.onload = function () {
 
   let timerInterval = null;
   let wordChoiceInterval = null;
+  let resultModalTimeout = null;
 
   function closeWordSelectModal() {
     if (wordChoiceInterval) clearInterval(wordChoiceInterval);
@@ -336,7 +356,10 @@ window.onload = function () {
   function pauseForWaitingRoom() {
     State.gameState = 'WAITING';
     if (timerInterval) clearInterval(timerInterval);
+    if (resultModalTimeout) clearTimeout(resultModalTimeout);
     closeWordSelectModal();
+    document.getElementById('result-modal').classList.add('hidden');
+    document.getElementById('result-modal').classList.remove('flex');
     timerTextEl.textContent = '대기중';
     timerTextEl.classList.remove('urgent-timer');
     updatePromptVisibility();
@@ -349,6 +372,7 @@ window.onload = function () {
     State.gameState = 'CHOOSING_WORD';
     if (timerInterval) clearInterval(timerInterval);
     if (wordChoiceInterval) clearInterval(wordChoiceInterval);
+    if (resultModalTimeout) clearTimeout(resultModalTimeout);
 
     if (Array.isArray(providedCandidates) && providedCandidates.length === 3) {
       State.candidatePromptIndices = providedCandidates;
@@ -454,6 +478,7 @@ window.onload = function () {
 
   // [2단계] 1P가 제시어를 확정하면 60초 드로잉 라운드 본격 시작
   function startPlayingRound(chosenPromptIndex, isFromNetwork = false) {
+    if (resultModalTimeout) clearTimeout(resultModalTimeout);
     closeWordSelectModal();
     State.gameState = 'PLAYING';
     State.timeLeft = 60;
@@ -520,8 +545,10 @@ window.onload = function () {
   }
 
   function endRound(isSuccess, winnerName, remainSeconds = State.timeLeft, skipRosterAward = false) {
+    if (State.gameState !== 'PLAYING') return;
     State.gameState = 'ROUND_END';
     if (timerInterval) clearInterval(timerInterval);
+    if (resultModalTimeout) clearTimeout(resultModalTimeout);
 
     const modalEl = document.getElementById('result-modal');
     const modalTitle = document.getElementById('modal-title');
@@ -556,9 +583,11 @@ window.onload = function () {
     }
 
     document.getElementById('result-img').src = drawCanvas.toDataURL('image/png');
-    setTimeout(() => {
-      modalEl.classList.remove('hidden');
-      modalEl.classList.add('flex');
+    resultModalTimeout = setTimeout(() => {
+      if (State.gameState === 'ROUND_END') {
+        modalEl.classList.remove('hidden');
+        modalEl.classList.add('flex');
+      }
     }, isSuccess ? 1200 : 350);
   }
 
@@ -606,7 +635,6 @@ window.onload = function () {
   addChatMessage('', '✨ 반반 무마니 3D에 오신 것을 환영합니다! 대기화면에서 내 캐릭터를 꾸미고 시작해 보세요.', 'system');
 
   // 7. 키보드 및 마우스/터치 입력
-  const keys = {};
   window.addEventListener('keydown', (e) => {
     if (!State.isTypingChat) keys[e.code] = true;
   });
@@ -770,6 +798,9 @@ window.onload = function () {
 
       const isControllingP2 = State.controlMode === 'BOTH' || State.controlMode === 'P2' || (State.aiHelperEnabled && (!State.isP2PConnected || State.isP2PHost));
       if (isControllingP2) {
+        const prevPenDown = State.isPenDown;
+        const prevColorHex = State.activeColorHex;
+
         State.activeColorHex = steppedColorHex;
         State.activeColorName = steppedColorName;
         State.isPenDown = Boolean(steppedColorHex);
@@ -781,16 +812,22 @@ window.onload = function () {
         }
         State.wasOnClearPad = currentlyOnClear;
 
-        Network.sendNetworkPacket({
-          type: 'MOVE_P2',
-          x: p2Obj.group.position.x,
-          z: p2Obj.group.position.z,
-          vx: p2State.vx,
-          vz: p2State.vz,
-          isPenDown: State.isPenDown,
-          activeColorHex: State.activeColorHex,
-          activeColorName: State.activeColorName
-        });
+        if (Math.hypot(p2State.vx, p2State.vz) > 0.001 || prevPenDown !== State.isPenDown || prevColorHex !== State.activeColorHex) {
+          Network.sendNetworkPacket({
+            type: 'MOVE_P2',
+            x: p2Obj.group.position.x,
+            z: p2Obj.group.position.z,
+            vx: p2State.vx,
+            vz: p2State.vz,
+            isPenDown: State.isPenDown,
+            activeColorHex: State.activeColorHex,
+            activeColorName: State.activeColorName
+          });
+        }
+      } else {
+        State.activeColorHex = steppedColorHex;
+        State.activeColorName = steppedColorName;
+        State.isPenDown = Boolean(steppedColorHex);
       }
 
       uiPenStatus.textContent = State.isPenDown ? `ON (${State.activeColorName} 공급중)` : 'OFF (발판 떨어짐)';
