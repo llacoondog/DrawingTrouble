@@ -340,46 +340,54 @@ window.BanBan.Scene3D = (function () {
     }
     if (previewCharObj) {
       applyCharacterCustomization(previewCharObj, State.myCustom);
+      if (previewRenderer && previewScene && previewCamera) {
+        previewRenderer.render(previewScene, previewCamera);
+      }
     }
   }
 
   // 대기화면(Entry Screen) 내부 3D 캐릭터 프리뷰 캔버스 초기화
   function initPreviewCanvas(canvasEl) {
     if (!canvasEl) return;
-    previewScene = new THREE.Scene();
-    previewScene.background = new THREE.Color(0x281e42);
+    try {
+      previewScene = new THREE.Scene();
+      previewScene.background = new THREE.Color(0x281e42);
 
-    previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
-    previewCamera.position.set(0, 1.25, 3.6);
-    previewCamera.lookAt(0, 0.95, 0);
+      previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+      previewCamera.position.set(0, 1.25, 3.6);
+      previewCamera.lookAt(0, 0.95, 0);
 
-    previewRenderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
-    previewRenderer.setSize(220, 220);
-    previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      previewRenderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+      previewRenderer.setSize(220, 220);
+      previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    previewScene.add(new THREE.AmbientLight(0xffffff, 0.88));
-    const pLight = new THREE.DirectionalLight(0xfff1f2, 0.68);
-    pLight.position.set(3, 6, 5);
-    previewScene.add(pLight);
+      previewScene.add(new THREE.AmbientLight(0xffffff, 0.88));
+      const pLight = new THREE.DirectionalLight(0xfff1f2, 0.68);
+      pLight.position.set(3, 6, 5);
+      previewScene.add(pLight);
 
-    // 프리뷰 받침대 귀여운 마카롱 단상
-    const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.84, 0.92, 0.18, 32),
-      new THREE.MeshToonMaterial({ color: 0xf472b6 })
-    );
-    pedestal.position.y = -0.09;
-    previewScene.add(pedestal);
+      // 프리뷰 받침대 귀여운 마카롱 단상
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.84, 0.92, 0.18, 32),
+        new THREE.MeshToonMaterial({ color: 0xf472b6 })
+      );
+      pedestal.position.y = -0.09;
+      previewScene.add(pedestal);
 
-    const pedestalRim = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.88, 0.88, 0.05, 32),
-      new THREE.MeshToonMaterial({ color: 0xfef08a })
-    );
-    pedestalRim.position.y = -0.01;
-    previewScene.add(pedestalRim);
+      const pedestalRim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.88, 0.88, 0.05, 32),
+        new THREE.MeshToonMaterial({ color: 0xfef08a })
+      );
+      pedestalRim.position.y = -0.01;
+      previewScene.add(pedestalRim);
 
-    previewCharObj = createJellyCharacter(State.myCustom.color, 'PREVIEW', State.myCustom);
-    previewCharObj.youMarker.visible = false;
-    previewScene.add(previewCharObj.group);
+      previewCharObj = createJellyCharacter(State.myCustom.color, 'PREVIEW', State.myCustom);
+      previewCharObj.youMarker.visible = false;
+      previewScene.add(previewCharObj.group);
+      previewRenderer.render(previewScene, previewCamera);
+    } catch (e) {
+      console.warn('Preview WebGL canvas init skipped:', e);
+    }
   }
 
   // 화실 주변을 꾸며주는 귀여운 3D 파스텔 소품(거대 크레파스, 구름, 별) 생성
@@ -469,12 +477,16 @@ window.BanBan.Scene3D = (function () {
     camera.position.set(1.6, 18, 16);
     camera.lookAt(1.6, 0, -0.6);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    container.appendChild(renderer.domElement);
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if (container) container.appendChild(renderer.domElement);
+    } catch (e) {
+      console.error('Main WebGLRenderer init error:', e);
+    }
 
     // 따뜻하고 화사한 조명 추가
     scene.add(new THREE.AmbientLight(0xfff7ed, 0.82));
@@ -655,6 +667,9 @@ window.BanBan.Scene3D = (function () {
     }
 
     updateYouMarkersVisibility();
+    if (renderer && scene && camera) {
+      renderer.render(scene, camera);
+    }
     window.addEventListener('resize', handleResize);
   }
 
@@ -676,6 +691,7 @@ window.BanBan.Scene3D = (function () {
   }
 
   function handleResize() {
+    if (!camera) return;
     const viewSize = Config.VIEW_SIZE;
     const newAspect = window.innerWidth / window.innerHeight;
     camera.left = -viewSize * newAspect;
@@ -683,7 +699,7 @@ window.BanBan.Scene3D = (function () {
     camera.top = viewSize;
     camera.bottom = -viewSize;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (renderer) renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
   function clearCanvas() {
@@ -1138,7 +1154,9 @@ window.BanBan.Scene3D = (function () {
   }
 
   function renderFrame(elapsedTime = 0, dtScale = 1) {
-    renderer.render(scene, camera);
+    if (renderer && scene && camera) {
+      renderer.render(scene, camera);
+    }
 
     // 대기화면(Entry Lobby)이 열려 있을 때 3D 클로즈업 프리뷰 캐릭터도 회전/바운스 렌더링
     if (previewRenderer && previewScene && previewCamera && previewCharObj) {

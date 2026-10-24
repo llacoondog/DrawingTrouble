@@ -3,15 +3,15 @@
 // ==========================================
 window.BanBan = window.BanBan || {};
 
-window.onload = function () {
+let isGameBootstrapped = false;
+
+function initGameApp() {
+  if (isGameBootstrapped) return;
+  isGameBootstrapped = true;
+
   const { Config, State, Sound, Scene3D, Network } = window.BanBan;
 
-  // 1. 3D 씬 및 프리뷰 캔버스 초기화
-  const container = document.getElementById('canvas-container');
-  Scene3D.initScene(container);
-  const { camera, renderer, drawCanvas, drawingBoard, p1Obj, p2Obj, padMeshes } = Scene3D.getSceneObjects();
-
-  // 2. UI 요소 참조
+  // 1. UI 요소 참조
   const chatMessagesEl = document.getElementById('chat-messages');
   const chatInputEl = document.getElementById('chat-input');
   const timerTextEl = document.getElementById('timer-text');
@@ -28,6 +28,15 @@ window.onload = function () {
   const entryScreenEl = document.getElementById('entry-screen');
   const entryNicknameEl = document.getElementById('entry-nickname');
   let lastSteppedPadId = null;
+
+  // 2. 3D 씬 및 프리뷰 캔버스 초기화
+  const container = document.getElementById('canvas-container');
+  try {
+    Scene3D.initScene(container);
+  } catch (err) {
+    console.error('Scene3D initialization error:', err);
+  }
+  const { camera, renderer, drawCanvas, drawingBoard, p1Obj, p2Obj, padMeshes } = Scene3D.getSceneObjects();
 
   function updatePadStepHUD(padData, isP2Airborne = false) {
     if (isP2Airborne) {
@@ -318,14 +327,14 @@ window.onload = function () {
     Scene3D.updateYouMarkersVisibility();
   }
 
-  document.getElementById('mode-both').addEventListener('click', () => setMode('BOTH', 'mode-both'));
-  document.getElementById('mode-p1').addEventListener('click', () => setMode('P1', 'mode-p1'));
-  document.getElementById('mode-p2').addEventListener('click', () => setMode('P2', 'mode-p2'));
-  document.getElementById('mode-spec').addEventListener('click', () => setMode('SPECTATOR', 'mode-spec'));
+  document.getElementById('mode-both')?.addEventListener('click', () => setMode('BOTH', 'mode-both'));
+  document.getElementById('mode-p1')?.addEventListener('click', () => setMode('P1', 'mode-p1'));
+  document.getElementById('mode-p2')?.addEventListener('click', () => setMode('P2', 'mode-p2'));
+  document.getElementById('mode-spec')?.addEventListener('click', () => setMode('SPECTATOR', 'mode-spec'));
 
   // 5. 실시간 채팅 & 라운드 진행 제어
-  chatInputEl.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
-  chatInputEl.addEventListener('blur', () => { State.isTypingChat = false; });
+  chatInputEl?.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
+  chatInputEl?.addEventListener('blur', () => { State.isTypingChat = false; });
 
   const mpNicknameEl = document.getElementById('mp-nickname');
   const mpRoomcodeEl = document.getElementById('mp-roomcode');
@@ -415,8 +424,8 @@ window.onload = function () {
     }
   }
 
-  document.getElementById('btn-send').addEventListener('click', handleSendChat);
-  chatInputEl.addEventListener('keydown', (e) => {
+  document.getElementById('btn-send')?.addEventListener('click', handleSendChat);
+  chatInputEl?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSendChat();
   });
 
@@ -671,7 +680,7 @@ window.onload = function () {
     }, isSuccess ? 1200 : 350);
   }
 
-  document.getElementById('btn-next-round').addEventListener('click', () => {
+  document.getElementById('btn-next-round')?.addEventListener('click', () => {
     State.currentRound++;
     State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(State.currentPromptIndex);
 
@@ -686,7 +695,7 @@ window.onload = function () {
     });
   });
 
-  document.getElementById('btn-save').addEventListener('click', () => {
+  document.getElementById('btn-save')?.addEventListener('click', () => {
     const link = document.createElement('a');
     link.download = `banban-round-${State.currentRound}.png`;
     link.href = drawCanvas.toDataURL('image/png');
@@ -707,9 +716,9 @@ window.onload = function () {
   });
 
   // 최초 접속 시 대기화면(LOBBY) 상태 세팅
-  p1Obj.group.position.set(0, 0, 2.2);
-  p2Obj.group.position.set(0.3, 0, -6.8);
-  timerTextEl.textContent = '대기중';
+  if (p1Obj?.group) p1Obj.group.position.set(0, 0, 2.2);
+  if (p2Obj?.group) p2Obj.group.position.set(0.3, 0, -6.8);
+  if (timerTextEl) timerTextEl.textContent = '대기중';
   updatePromptVisibility();
   addChatMessage('', '✨ 반반 무마니 3D에 오신 것을 환영합니다! 대기화면에서 내 캐릭터를 꾸미고 시작해 보세요.', 'system');
 
@@ -730,7 +739,7 @@ window.onload = function () {
   const raycaster = new THREE.Raycaster();
   const pointerNDC = new THREE.Vector2();
 
-  renderer.domElement.addEventListener('pointerdown', (e) => {
+  renderer?.domElement?.addEventListener('pointerdown', (e) => {
     if (State.gameState !== 'PLAYING') return;
     const rect = renderer.domElement.getBoundingClientRect();
     pointerNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1028,4 +1037,11 @@ window.onload = function () {
   }
 
   animate();
-};
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initGameApp);
+} else {
+  initGameApp();
+}
+window.addEventListener('load', initGameApp);

@@ -509,9 +509,9 @@ window.BanBan.Network = (function () {
       State.currentRoomCode = cleanInvited;
     }
 
-    document.getElementById('btn-open-multi').addEventListener('click', openMultiModal);
-    p2pBadge.addEventListener('click', openMultiModal);
-    document.getElementById('btn-close-multi').addEventListener('click', closeMultiModal);
+    document.getElementById('btn-open-multi')?.addEventListener('click', openMultiModal);
+    p2pBadge?.addEventListener('click', openMultiModal);
+    document.getElementById('btn-close-multi')?.addEventListener('click', closeMultiModal);
 
     // 멀티 모달 안에서 [👕 캐릭터 변경 / 꾸미기] 클릭 시 대기화면 커스터마이저 오픈
     const btnMpBackCustom = document.getElementById('btn-mp-back-custom');
@@ -529,10 +529,10 @@ window.BanBan.Network = (function () {
       });
     }
 
-    document.getElementById('btn-copy-code').addEventListener('click', copyRoomCode);
-    document.getElementById('btn-waiting-copy-code').addEventListener('click', copyRoomCode);
-    document.getElementById('btn-copy-link').addEventListener('click', copyInviteLink);
-    document.getElementById('btn-waiting-copy-link').addEventListener('click', copyInviteLink);
+    document.getElementById('btn-copy-code')?.addEventListener('click', copyRoomCode);
+    document.getElementById('btn-waiting-copy-code')?.addEventListener('click', copyRoomCode);
+    document.getElementById('btn-copy-link')?.addEventListener('click', copyInviteLink);
+    document.getElementById('btn-waiting-copy-link')?.addEventListener('click', copyInviteLink);
 
     // 대기방 내 [🔄 역할 로테이션] 버튼 (방장 전용)
     const btnSwapRoles = document.getElementById('btn-swap-roles');
@@ -569,7 +569,7 @@ window.BanBan.Network = (function () {
     }
 
     // [대기방 만들기 - 방장]
-    document.getElementById('btn-host-room').addEventListener('click', () => {
+    document.getElementById('btn-host-room')?.addEventListener('click', () => {
       State.myNickname = (document.getElementById('mp-nickname').value || State.myNickname || '방장화가').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
       Config.saveProfile(State.myNickname, State.myCustom);
@@ -698,7 +698,7 @@ window.BanBan.Network = (function () {
     });
 
     // [친구 대기방 입장하기 - 2P 또는 구경꾼]
-    document.getElementById('btn-join-room').addEventListener('click', () => {
+    document.getElementById('btn-join-room')?.addEventListener('click', () => {
       State.myNickname = (document.getElementById('mp-nickname').value || State.myNickname || '팔레트장인').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
       Config.saveProfile(State.myNickname, State.myCustom);

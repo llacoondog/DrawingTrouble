@@ -10,26 +10,34 @@ window.BanBan.Sound = (function () {
 
   function getContext() {
     if (!State.soundEnabled) return null;
-    if (!audioCtx) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        audioCtx = new AudioCtx();
+    try {
+      if (!audioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          audioCtx = new AudioCtx();
+        }
       }
-    }
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
+      if (audioCtx && audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
+        audioCtx.resume().catch(() => {});
+      }
+    } catch (e) {
+      return null;
     }
     return audioCtx;
   }
 
   // 최초 사용자 입력 시 오디오 컨텍스트 잠금 해제
   function unlockAudio() {
-    if (!audioCtx) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) audioCtx = new AudioCtx();
-    }
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
+    try {
+      if (!audioCtx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) audioCtx = new AudioCtx();
+      }
+      if (audioCtx && audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
+        audioCtx.resume().catch(() => {});
+      }
+    } catch (e) {
+      // ignore audio context unlock errors
     }
   }
   window.addEventListener('pointerdown', unlockAudio, { once: true });
@@ -37,28 +45,32 @@ window.BanBan.Sound = (function () {
 
   // 기본 단일 톤 재생 헬퍼
   function playTone(freq, type = 'sine', duration = 0.12, volume = 0.14, slideToFreq = null, delay = 0) {
-    const ctx = getContext();
-    if (!ctx) return;
+    try {
+      const ctx = getContext();
+      if (!ctx || typeof ctx.createOscillator !== 'function') return;
 
-    const startTime = ctx.currentTime + delay;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+      const startTime = (ctx.currentTime || 0) + delay;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, startTime);
-    if (slideToFreq) {
-      osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideToFreq), startTime + duration);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
+      if (slideToFreq) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideToFreq), startTime + duration);
+      }
+
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.linearRampToValueAtTime(volume, startTime + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.02);
+    } catch (e) {
+      // ignore audio playback errors
     }
-
-    gain.gain.setValueAtTime(0.0001, startTime);
-    gain.gain.linearRampToValueAtTime(volume, startTime + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.02);
   }
 
   // 1) 색상 발판 밟을 때: 펜타토닉 마림바/물방울 팝 사운드
