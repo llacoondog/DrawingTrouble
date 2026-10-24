@@ -207,6 +207,35 @@
     </div>
   </div>
 
+  <!-- 🎯 1P 제시어 3택 1 선택 모달 -->
+  <div id="word-select-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="modal-pop bg-[#1b1f2d] border border-amber-400/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-center">
+      <div class="inline-flex items-center gap-1.5 bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-extrabold px-3 py-1 rounded-full mb-2">
+        <span>🎨 ROUND 제시어 결정</span>
+        <span>·</span>
+        <span id="word-select-timer">10s</span>
+      </div>
+      <h2 id="word-select-title" class="text-xl sm:text-2xl font-black text-white mb-1">1P가 그릴 제시어를 골라주세요!</h2>
+      <p id="word-select-subtitle" class="text-xs text-slate-400 mb-5">
+        무작위로 뽑힌 3개의 제시어 중 가장 자신 있는 1개를 선택하면 라운드가 시작됩니다.
+      </p>
+
+      <!-- 1P 전용: 3개의 제시어 선택 버튼 리스트 -->
+      <div id="word-choice-list" class="space-y-2.5"></div>
+
+      <!-- 2P / 구경꾼 전용: 1P가 고르는 동안 대기 안내 -->
+      <div id="word-wait-notice" class="hidden py-6 px-4 bg-[#12141c] border border-white/10 rounded-2xl">
+        <div class="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <div id="word-wait-text" class="text-sm font-extrabold text-pink-300 mb-1">
+          🎨 1P 브러시 러너가 제시어를 고르고 있습니다...
+        </div>
+        <div class="text-xs text-slate-400">
+          3개의 후보 중 1개가 선택되면 즉시 60초 드로잉이 시작됩니다!
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 라운드 결과 발표 모달 -->
   <div id="result-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
     <div class="modal-pop bg-[#1e222d] border border-white/15 rounded-3xl p-6 sm:p-8 text-center max-w-sm w-full shadow-2xl">

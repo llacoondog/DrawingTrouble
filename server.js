@@ -103,16 +103,19 @@ io.on('connection', (socket) => {
 
     if (room) {
       if (data.type === 'START_GAME') {
-        room.status = 'PLAYING';
+        room.status = 'CHOOSING_WORD';
         room.round = data.round || 1;
-        room.promptIndex = data.promptIndex || 0;
+        room.candidateIndices = data.candidateIndices || [0, 1, 2];
         if (Array.isArray(data.roster)) room.roster = data.roster;
+      } else if (data.type === 'WORD_SELECTED') {
+        room.status = 'PLAYING';
+        if (typeof data.promptIndex === 'number') room.promptIndex = data.promptIndex;
       } else if (data.type === 'ROUND_WIN' && Array.isArray(data.roster)) {
         room.roster = data.roster;
       } else if (data.type === 'NEXT_ROUND') {
-        room.status = 'PLAYING';
+        room.status = 'CHOOSING_WORD';
         if (typeof data.round === 'number') room.round = data.round;
-        if (typeof data.promptIndex === 'number') room.promptIndex = data.promptIndex;
+        if (Array.isArray(data.candidateIndices)) room.candidateIndices = data.candidateIndices;
         if (Array.isArray(data.roster)) room.roster = data.roster;
       } else if (data.type === 'ROSTER_SYNC' && Array.isArray(data.roster)) {
         room.roster = data.roster;

@@ -113,6 +113,22 @@ function saveProfile(nickname, custom) {
 
 const initialProfile = loadSavedProfile();
 
+// 전체 단어장에서 중복 없이 무작위 3개의 인덱스 추출
+function pickThreeRandomPromptIndices(excludeIndex = -1) {
+  const total = RAW_WORDS.length;
+  const pool = [];
+  for (let i = 0; i < total; i++) {
+    if (i !== excludeIndex) pool.push(i);
+  }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = pool[i];
+    pool[i] = pool[j];
+    pool[j] = temp;
+  }
+  return pool.slice(0, 3);
+}
+
 window.BanBan.Config = {
   PEER_PREFIX: 'banban3d-room-',
   CANVAS_SIZE: 12,
@@ -121,6 +137,7 @@ window.BanBan.Config = {
 
   extractChosung,
   saveProfile,
+  pickThreeRandomPromptIndices,
   CUSTOM_COLORS,
   CUSTOM_HATS,
   CUSTOM_FACES,
@@ -164,9 +181,10 @@ window.BanBan.State = {
   currentRound: 1,
   totalScore: 0,
   timeLeft: 60,
+  candidatePromptIndices: [0, 1, 2],
   currentPromptIndex: 0,
   currentPrompt: window.BanBan.Config.WORD_POOL[0],
-  gameState: 'LOBBY', // 'LOBBY' (접속 대기화면) | 'WAITING' (멀티 대기방) | 'PLAYING' | 'ROUND_END'
+  gameState: 'LOBBY', // 'LOBBY' | 'WAITING' | 'CHOOSING_WORD' | 'PLAYING' | 'ROUND_END'
   isTypingChat: false,
 
   // 내 캐릭터 커스터마이징 상태

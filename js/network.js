@@ -17,7 +17,8 @@ window.BanBan.Network = (function () {
   let callbacks = {
     onAddChatMessage: () => {},
     onEndRound: () => {},
-    onStartRound: () => {},
+    onStartWordSelection: () => {},
+    onWordSelected: () => {},
     onPauseForWaitingRoom: () => {},
     onOpenCustomizer: () => {},
     onSetMode: () => {},
@@ -292,8 +293,8 @@ window.BanBan.Network = (function () {
       }
     } else if (data.type === 'START_GAME') {
       State.currentRound = data.round || 1;
-      if (typeof data.promptIndex === 'number') {
-        State.currentPromptIndex = data.promptIndex;
+      if (Array.isArray(data.candidateIndices)) {
+        State.candidatePromptIndices = data.candidateIndices;
       }
       if (data.roster) {
         State.playerRoster = data.roster;
@@ -303,8 +304,13 @@ window.BanBan.Network = (function () {
       closeMultiModal();
       const entryScreen = document.getElementById('entry-screen');
       if (entryScreen) entryScreen.classList.add('hidden');
-      callbacks.onAddChatMessage('', `🚀 방장이 게임을 시작했습니다! ROUND ${State.currentRound} 출발!`, 'system');
-      callbacks.onStartRound(true);
+      callbacks.onAddChatMessage('', `🚀 방장이 게임을 시작했습니다! 1P가 제시어를 고르면 라운드가 시작됩니다!`, 'system');
+      callbacks.onStartWordSelection(true, State.candidatePromptIndices);
+    } else if (data.type === 'WORD_SELECTED') {
+      if (typeof data.promptIndex === 'number') {
+        State.currentPromptIndex = data.promptIndex;
+      }
+      callbacks.onWordSelected(State.currentPromptIndex, true);
     } else if (data.type === 'CHAT') {
       if (State.gameState === 'PLAYING' && callbacks.normalizeAnswer(data.text) === callbacks.normalizeAnswer(State.currentPrompt.word)) {
         callbacks.onAddChatMessage('', `🎊 [${data.sender}]님이 정답 [${State.currentPrompt.word}]을 맞혔습니다!`, 'correct');
@@ -323,8 +329,8 @@ window.BanBan.Network = (function () {
       }
     } else if (data.type === 'NEXT_ROUND') {
       State.currentRound = data.round || (State.currentRound + 1);
-      if (typeof data.promptIndex === 'number') {
-        State.currentPromptIndex = data.promptIndex;
+      if (Array.isArray(data.candidateIndices)) {
+        State.candidatePromptIndices = data.candidateIndices;
       }
       if (data.roster) {
         State.playerRoster = data.roster;
@@ -334,7 +340,7 @@ window.BanBan.Network = (function () {
         rotatePlayerRoles();
       }
       closeMultiModal();
-      callbacks.onStartRound(true);
+      callbacks.onStartWordSelection(true, State.candidatePromptIndices);
     } else if (data.type === 'CLEAR') {
       Scene3D.clearCanvas();
       if (data.by) {
@@ -399,7 +405,7 @@ window.BanBan.Network = (function () {
 
           if (data.roomStatus === 'PLAYING') {
             closeMultiModal();
-            callbacks.onStartRound(true);
+            callbacks.onWordSelected(State.currentPromptIndex, true);
           } else {
             callbacks.onPauseForWaitingRoom();
             switchModalToWaitingView();
@@ -519,7 +525,7 @@ window.BanBan.Network = (function () {
       btnStartMpGame.addEventListener('click', () => {
         if (!State.isP2PHost) return;
         State.currentRound = 1;
-        State.currentPromptIndex = 0;
+        State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(-1);
         applyMyRoleFromRoster();
         renderPlayerRoster();
         closeMultiModal();
@@ -527,12 +533,12 @@ window.BanBan.Network = (function () {
         sendNetworkPacket({
           type: 'START_GAME',
           round: State.currentRound,
-          promptIndex: State.currentPromptIndex,
+          candidateIndices: State.candidatePromptIndices,
           roster: State.playerRoster
         });
 
-        callbacks.onAddChatMessage('', `🎮 대기방 인원 준비 완료! ROUND 1 게임을 시작합니다!`, 'system');
-        callbacks.onStartRound(false);
+        callbacks.onAddChatMessage('', `🎮 대기방 인원 준비 완료! 1P가 제시어 3개 중 1개를 선택합니다!`, 'system');
+        callbacks.onStartWordSelection(false, State.candidatePromptIndices);
       });
     }
 

@@ -140,11 +140,11 @@ window.onload = function () {
         Network.broadcastMyCustomization();
         entryScreenEl.classList.add('hidden');
 
-        // 만약 멀티 대기방에 연결된 상태였다면 대기방 모달로 복귀, 아니면 로컬 라운드 시작
+        // 만약 멀티 대기방에 연결된 상태였다면 대기방 모달로 복귀, 아니면 로컬 제시어 선택 시작
         if (State.isP2PConnected && State.gameState === 'WAITING') {
           Network.openMultiModal();
-        } else if (State.gameState !== 'PLAYING') {
-          startRound(false);
+        } else if (State.gameState !== 'PLAYING' && State.gameState !== 'CHOOSING_WORD') {
+          startWordSelectionPhase(false);
         }
       });
     }
@@ -188,6 +188,8 @@ window.onload = function () {
     const promptEl = document.getElementById('prompt-text');
     if (State.gameState === 'WAITING' || State.gameState === 'LOBBY') {
       promptEl.textContent = '제시어: (대기실 준비 중...)';
+    } else if (State.gameState === 'CHOOSING_WORD') {
+      promptEl.textContent = '제시어: (🎨 1P가 3개 중 선택 중...)';
     } else if (State.controlMode === 'SPECTATOR') {
       promptEl.textContent = `제시어: ${State.currentPrompt.word.replace(/[^\s]/g, '❓')}`;
     } else {
@@ -320,10 +322,21 @@ window.onload = function () {
   });
 
   let timerInterval = null;
+  let wordChoiceInterval = null;
+
+  function closeWordSelectModal() {
+    if (wordChoiceInterval) clearInterval(wordChoiceInterval);
+    const wordModal = document.getElementById('word-select-modal');
+    if (wordModal) {
+      wordModal.classList.add('hidden');
+      wordModal.classList.remove('flex');
+    }
+  }
 
   function pauseForWaitingRoom() {
     State.gameState = 'WAITING';
     if (timerInterval) clearInterval(timerInterval);
+    closeWordSelectModal();
     timerTextEl.textContent = '대기중';
     timerTextEl.classList.remove('urgent-timer');
     updatePromptVisibility();
@@ -331,11 +344,121 @@ window.onload = function () {
     Scene3D.clearConfetti();
   }
 
-  function startRound(isFromNetwork = false) {
+  // [1단계] 라운드 시작 전 무작위 3개 제시어 후보 중 1P가 1개를 고르는 단계
+  function startWordSelectionPhase(isFromNetwork = false, providedCandidates = null) {
+    State.gameState = 'CHOOSING_WORD';
+    if (timerInterval) clearInterval(timerInterval);
+    if (wordChoiceInterval) clearInterval(wordChoiceInterval);
+
+    if (Array.isArray(providedCandidates) && providedCandidates.length === 3) {
+      State.candidatePromptIndices = providedCandidates;
+    } else if (!isFromNetwork) {
+      State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(State.currentPromptIndex);
+    }
+
+    document.getElementById('round-text').textContent = `ROUND ${State.currentRound}`;
+    timerTextEl.textContent = '선택중';
+    timerTextEl.classList.remove('urgent-timer');
+    document.getElementById('result-modal').classList.add('hidden');
+    document.getElementById('result-modal').classList.remove('flex');
+    if (entryScreenEl) entryScreenEl.classList.add('hidden');
+
+    updatePromptVisibility();
+    Scene3D.updateYouMarkersVisibility();
+    Scene3D.syncRosterCustomizations();
+    Scene3D.clearCanvas();
+    Scene3D.clearConfetti();
+
+    p1Obj.group.position.set(0, 0, 2.2);
+    p2Obj.group.position.set(1.1, 0, -6.8);
+    State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
+    State.isPenDown = false;
+    State.wasOnClearPad = false;
+    State.aiColorIdx = 4;
+    State.aiTargetX = 1.1;
+
+    // 내가 1P 권한이 있는지 확인 (로컬 모드에서는 항상 직접 선택 가능, 멀티에서는 1P만 선택)
+    const me = State.playerRoster.find(p => p.id === State.myPeerId);
+    const canIPick = !State.isP2PConnected || !me || me.role === 'P1';
+    const p1Player = State.playerRoster.find(p => p.role === 'P1');
+
+    const wordModal = document.getElementById('word-select-modal');
+    const choiceListEl = document.getElementById('word-choice-list');
+    const waitNoticeEl = document.getElementById('word-wait-notice');
+    const waitTextEl = document.getElementById('word-wait-text');
+    const selectTimerEl = document.getElementById('word-select-timer');
+
+    if (canIPick) {
+      choiceListEl.classList.remove('hidden');
+      waitNoticeEl.classList.add('hidden');
+      choiceListEl.innerHTML = '';
+
+      State.candidatePromptIndices.forEach((poolIdx, idx) => {
+        const item = Config.WORD_POOL[poolIdx % Config.WORD_POOL.length];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full bg-[#12141c] hover:bg-indigo-600/30 active:scale-98 border border-white/15 hover:border-amber-400 rounded-2xl p-3.5 text-left transition flex items-center justify-between group shadow';
+        btn.innerHTML = `
+          <div>
+            <span class="text-xs font-extrabold text-amber-400 mr-1.5">후보 ${idx + 1}</span>
+            <span class="text-sm sm:text-base font-black text-white group-hover:text-amber-200">${item.word}</span>
+            <div class="text-[11px] text-slate-400 mt-0.5">초성 힌트: ${item.hint}</div>
+          </div>
+          <span class="bg-amber-400 text-slate-950 text-xs font-black px-3 py-1.5 rounded-xl group-hover:scale-105 transition">선택 ▶</span>
+        `;
+        btn.addEventListener('click', () => {
+          confirmWordSelection(poolIdx);
+        });
+        choiceListEl.appendChild(btn);
+      });
+    } else {
+      choiceListEl.classList.add('hidden');
+      waitNoticeEl.classList.remove('hidden');
+      if (waitTextEl) {
+        waitTextEl.textContent = `🎨 1P 브러시 러너(${p1Player?.nickname || '1P'})님이 3개의 후보 중 제시어를 고르고 있습니다...`;
+      }
+    }
+
+    wordModal.classList.remove('hidden');
+    wordModal.classList.add('flex');
+
+    let choiceTimeLeft = 10;
+    if (selectTimerEl) selectTimerEl.textContent = `${choiceTimeLeft}s`;
+
+    wordChoiceInterval = setInterval(() => {
+      if (State.gameState !== 'CHOOSING_WORD') {
+        clearInterval(wordChoiceInterval);
+        return;
+      }
+      choiceTimeLeft--;
+      if (selectTimerEl) selectTimerEl.textContent = `${choiceTimeLeft}s`;
+
+      if (choiceTimeLeft <= 0) {
+        clearInterval(wordChoiceInterval);
+        if (canIPick) {
+          confirmWordSelection(State.candidatePromptIndices[0]);
+        }
+      }
+    }, 1000);
+  }
+
+  function confirmWordSelection(chosenPromptIndex) {
+    closeWordSelectModal();
+    Network.sendNetworkPacket({
+      type: 'WORD_SELECTED',
+      round: State.currentRound,
+      promptIndex: chosenPromptIndex
+    });
+    startPlayingRound(chosenPromptIndex, false);
+  }
+
+  // [2단계] 1P가 제시어를 확정하면 60초 드로잉 라운드 본격 시작
+  function startPlayingRound(chosenPromptIndex, isFromNetwork = false) {
+    closeWordSelectModal();
     State.gameState = 'PLAYING';
     State.timeLeft = 60;
-    if (!isFromNetwork) {
-      State.currentPromptIndex = (State.currentRound - 1) % Config.WORD_POOL.length;
+    if (typeof chosenPromptIndex === 'number') {
+      State.currentPromptIndex = chosenPromptIndex;
     }
     State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
 
@@ -367,7 +490,7 @@ window.onload = function () {
       ? ` (🎨 1P: ${p1Player.nickname} / 🕹️ 2P: ${p2Player.nickname})`
       : '';
 
-    addChatMessage('', `🎨 ROUND ${State.currentRound} 시작!${roleSummary}`, 'system');
+    addChatMessage('', `🎨 제시어 선택 완료! ROUND ${State.currentRound} 드로잉 시작!${roleSummary}`, 'system');
 
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
@@ -441,15 +564,15 @@ window.onload = function () {
 
   document.getElementById('btn-next-round').addEventListener('click', () => {
     State.currentRound++;
-    State.currentPromptIndex = (State.currentRound - 1) % Config.WORD_POOL.length;
+    State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(State.currentPromptIndex);
 
     Network.rotatePlayerRoles();
-    startRound(false);
+    startWordSelectionPhase(false, State.candidatePromptIndices);
 
     Network.sendNetworkPacket({
       type: 'NEXT_ROUND',
       round: State.currentRound,
-      promptIndex: State.currentPromptIndex,
+      candidateIndices: State.candidatePromptIndices,
       roster: State.playerRoster
     });
   });
@@ -466,7 +589,8 @@ window.onload = function () {
   Network.initNetworkAndLobby({
     onAddChatMessage: addChatMessage,
     onEndRound: endRound,
-    onStartRound: startRound,
+    onStartWordSelection: startWordSelectionPhase,
+    onWordSelected: startPlayingRound,
     onPauseForWaitingRoom: pauseForWaitingRoom,
     onOpenCustomizer: openCustomizerModal,
     onSetMode: setMode,
