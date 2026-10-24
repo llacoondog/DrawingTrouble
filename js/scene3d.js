@@ -56,11 +56,11 @@ window.BanBan.Scene3D = (function () {
       c.stroke();
     }
 
-    c.font = '900 30px Inter, Malgun Gothic, sans-serif';
+    c.font = '900 30px Jua, Inter, Malgun Gothic, sans-serif';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillStyle = textColor;
-    c.fillText(text, canvas.width / 2, canvas.height / 2 + 1);
+    c.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
 
     const tex = new THREE.CanvasTexture(canvas);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
@@ -347,7 +347,7 @@ window.BanBan.Scene3D = (function () {
   function initPreviewCanvas(canvasEl) {
     if (!canvasEl) return;
     previewScene = new THREE.Scene();
-    previewScene.background = new THREE.Color(0x141824);
+    previewScene.background = new THREE.Color(0x281e42);
 
     previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
     previewCamera.position.set(0, 1.25, 3.6);
@@ -357,27 +357,109 @@ window.BanBan.Scene3D = (function () {
     previewRenderer.setSize(220, 220);
     previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    previewScene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const pLight = new THREE.DirectionalLight(0xffffff, 0.65);
+    previewScene.add(new THREE.AmbientLight(0xffffff, 0.88));
+    const pLight = new THREE.DirectionalLight(0xfff1f2, 0.68);
     pLight.position.set(3, 6, 5);
     previewScene.add(pLight);
 
-    // 프리뷰 받침대 원형 단상
+    // 프리뷰 받침대 귀여운 마카롱 단상
     const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.82, 0.92, 0.16, 32),
-      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.3 })
+      new THREE.CylinderGeometry(0.84, 0.92, 0.18, 32),
+      new THREE.MeshToonMaterial({ color: 0xf472b6 })
     );
-    pedestal.position.y = -0.08;
+    pedestal.position.y = -0.09;
     previewScene.add(pedestal);
+
+    const pedestalRim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.88, 0.88, 0.05, 32),
+      new THREE.MeshToonMaterial({ color: 0xfef08a })
+    );
+    pedestalRim.position.y = -0.01;
+    previewScene.add(pedestalRim);
 
     previewCharObj = createJellyCharacter(State.myCustom.color, 'PREVIEW', State.myCustom);
     previewCharObj.youMarker.visible = false;
     previewScene.add(previewCharObj.group);
   }
 
+  // 화실 주변을 꾸며주는 귀여운 3D 파스텔 소품(거대 크레파스, 구름, 별) 생성
+  function addCuteStudioProps() {
+    const propsGroup = new THREE.Group();
+
+    // 1) 좌측 거대 핑크 크레파스 장식
+    function createGiantCrayon(colorHex, bodyHex, x, z, rotY) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.38, 0.38, 2.6, 20),
+        new THREE.MeshToonMaterial({ color: bodyHex })
+      );
+      body.rotation.z = Math.PI / 2;
+      body.castShadow = true;
+      g.add(body);
+
+      const stripe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.39, 0.39, 1.4, 20),
+        new THREE.MeshToonMaterial({ color: 0xffffff })
+      );
+      stripe.rotation.z = Math.PI / 2;
+      g.add(stripe);
+
+      const tip = new THREE.Mesh(
+        new THREE.ConeGeometry(0.38, 0.75, 20),
+        new THREE.MeshToonMaterial({ color: colorHex })
+      );
+      tip.rotation.z = -Math.PI / 2;
+      tip.position.x = 1.67;
+      tip.castShadow = true;
+      g.add(tip);
+
+      g.position.set(x, 0.38, z);
+      g.rotation.y = rotY;
+      return g;
+    }
+
+    propsGroup.add(createGiantCrayon(0xf43f5e, 0xfb7185, -8.5, 1.5, 0.35));
+    propsGroup.add(createGiantCrayon(0x06b6d4, 0x38bdf8, -8.2, 4.2, -0.25));
+    propsGroup.add(createGiantCrayon(0xfacc15, 0xfde047, 8.5, 2.8, 2.75));
+
+    // 2) 폭신폭신 3D 구름 & 파스텔 별 장식
+    const cloudMat = new THREE.MeshToonMaterial({ color: 0xfdf2f8 });
+    function createFluffyCloud(x, y, z, scale = 1) {
+      const cg = new THREE.Group();
+      const p1 = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), cloudMat);
+      const p2 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), cloudMat);
+      p2.position.set(-0.48, -0.08, 0.05);
+      const p3 = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), cloudMat);
+      p3.position.set(0.48, -0.06, -0.05);
+      cg.add(p1, p2, p3);
+      cg.position.set(x, y, z);
+      cg.scale.set(scale, scale, scale);
+      return cg;
+    }
+
+    propsGroup.add(createFluffyCloud(-9.2, 0.5, -2.5, 0.95));
+    propsGroup.add(createFluffyCloud(9.2, 0.5, -1.8, 0.85));
+
+    // 3) 바닥 파스텔 도트 장식 타일
+    const dotColors = [0xf472b6, 0x38bdf8, 0xfacc15, 0xa78bfa, 0x34d399];
+    const dotCoords = [
+      [-8.8, -5.2], [-9.2, 6.4], [8.8, 6.2], [9.4, -4.8], [-7.8, 8.8], [7.8, 8.8]
+    ];
+    dotCoords.forEach(([dx, dz], idx) => {
+      const dot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.45, 0.45, 0.06, 20),
+        new THREE.MeshBasicMaterial({ color: dotColors[idx % dotColors.length], transparent: true, opacity: 0.45 })
+      );
+      dot.position.set(dx, -0.35, dz);
+      propsGroup.add(dot);
+    });
+
+    scene.add(propsGroup);
+  }
+
   function initScene(container) {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x12141c);
+    scene.background = new THREE.Color(0x281e42);
 
     const viewSize = Config.VIEW_SIZE;
     const aspect = window.innerWidth / window.innerHeight;
@@ -394,9 +476,9 @@ window.BanBan.Scene3D = (function () {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    // 조명 추가
-    scene.add(new THREE.AmbientLight(0xffffff, 0.76));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.62);
+    // 따뜻하고 화사한 조명 추가
+    scene.add(new THREE.AmbientLight(0xfff7ed, 0.82));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.64);
     dirLight.position.set(10, 25, 15);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.set(1024, 1024);
@@ -417,12 +499,12 @@ window.BanBan.Scene3D = (function () {
     // 중앙 12x12 도화지 보드
     const CANVAS_SIZE = Config.CANVAS_SIZE;
     const boardMaterials = [
-      new THREE.MeshLambertMaterial({ color: 0xcbd5e1 }),
-      new THREE.MeshLambertMaterial({ color: 0xcbd5e1 }),
+      new THREE.MeshLambertMaterial({ color: 0xfef3c7 }),
+      new THREE.MeshLambertMaterial({ color: 0xfef3c7 }),
       new THREE.MeshBasicMaterial({ map: canvasTexture }),
-      new THREE.MeshLambertMaterial({ color: 0xcbd5e1 }),
-      new THREE.MeshLambertMaterial({ color: 0xcbd5e1 }),
-      new THREE.MeshLambertMaterial({ color: 0xcbd5e1 })
+      new THREE.MeshLambertMaterial({ color: 0xfef3c7 }),
+      new THREE.MeshLambertMaterial({ color: 0xfef3c7 }),
+      new THREE.MeshLambertMaterial({ color: 0xfef3c7 })
     ];
     drawingBoard = new THREE.Mesh(
       new THREE.BoxGeometry(CANVAS_SIZE, 0.4, CANVAS_SIZE),
@@ -432,10 +514,11 @@ window.BanBan.Scene3D = (function () {
     drawingBoard.receiveShadow = true;
     scene.add(drawingBoard);
 
-    // 도화지 외곽 원목 액자 테두리
+    // 도화지 외곽 귀여운 버터-파스텔 액자 테두리 + 핑크 모서리 범퍼
     const frameGroup = new THREE.Group();
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.65 });
-    const frameThickness = 0.5;
+    const woodMat = new THREE.MeshToonMaterial({ color: 0xfbbf24 });
+    const cornerMat = new THREE.MeshToonMaterial({ color: 0xf472b6 });
+    const frameThickness = 0.55;
     const frameHeight = 0.55;
     const topFrame = new THREE.Mesh(new THREE.BoxGeometry(CANVAS_SIZE + frameThickness * 2, frameHeight, frameThickness), woodMat);
     topFrame.position.set(0, -0.15, 2.2 - CANVAS_SIZE / 2 - frameThickness / 2);
@@ -450,36 +533,59 @@ window.BanBan.Scene3D = (function () {
       m.receiveShadow = true;
       frameGroup.add(m);
     });
+
+    // 액자 네 모서리 귀여운 핑크 원통 장식
+    const halfF = CANVAS_SIZE / 2 + frameThickness / 2;
+    [[-halfF, 2.2 - halfF], [halfF, 2.2 - halfF], [-halfF, 2.2 + halfF], [halfF, 2.2 + halfF]].forEach(([cx, cz]) => {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.62, 20), cornerMat);
+      cap.position.set(cx, -0.12, cz);
+      cap.castShadow = true;
+      frameGroup.add(cap);
+    });
     scene.add(frameGroup);
 
-    // 상단 2P 컨트롤 데크
+    // 화실 주변 귀여운 소품 배치
+    addCuteStudioProps();
+
+    // 상단 2P 파스텔 컨트롤 데크
     const controlDeck = new THREE.Mesh(
-      new THREE.BoxGeometry(17.6, 0.6, 4.4),
-      new THREE.MeshStandardMaterial({ color: 0x262936, roughness: 0.5, metalness: 0.2 })
+      new THREE.BoxGeometry(17.8, 0.6, 4.6),
+      new THREE.MeshToonMaterial({ color: 0x3b2d5e })
     );
     controlDeck.position.set(0.2, -0.3, -6.8);
     controlDeck.receiveShadow = true;
     scene.add(controlDeck);
 
+    // 컨트롤 데크 핑크 테두리 라인
+    const deckRim = new THREE.Mesh(
+      new THREE.BoxGeometry(18.0, 0.14, 4.8),
+      new THREE.MeshToonMaterial({ color: 0xf472b6 })
+    );
+    deckRim.position.set(0.2, -0.05, -6.8);
+    scene.add(deckRim);
+
     // 색상/굵기 발판 구역과 우측 멀리 떨어진 [도화지 지우기] 구역 사이 경고 분리선
     const dividerLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.04, 3.8),
-      new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+      new THREE.BoxGeometry(0.20, 0.06, 4.0),
+      new THREE.MeshBasicMaterial({ color: 0xfde047 })
     );
-    dividerLine.position.set(5.55, 0.02, -6.8);
+    dividerLine.position.set(5.55, 0.03, -6.8);
     scene.add(dividerLine);
 
-    // 컨트롤 데크 위 원통형 압력 발판(Pressure Pads) 및 라벨 생성
+    // 컨트롤 데크 위 원통형 젤리 압력 버튼(Pressure Pads) 및 큼직한 라벨 생성
     Config.PADS_DATA.forEach(data => {
       const isClearPad = data.type === 'clear';
       const isSizePad = data.type === 'size';
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0xffffff,
+        roughness: 0.3,
+        metalness: 0.2,
+        emissive: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0x000000,
+        emissiveIntensity: 0.15
+      });
       const baseRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 1.12 : 0.94, isClearPad ? 1.18 : 1.00, 0.1, 24),
-        new THREE.MeshStandardMaterial({
-          color: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0x475569,
-          roughness: 0.4,
-          metalness: 0.5
-        })
+        new THREE.CylinderGeometry(isClearPad ? 1.14 : 0.95, isClearPad ? 1.20 : 1.02, 0.12, 28),
+        ringMat
       );
       baseRing.position.set(data.x, 0.05, data.z);
       baseRing.receiveShadow = true;
@@ -487,40 +593,53 @@ window.BanBan.Scene3D = (function () {
 
       const padMat = new THREE.MeshStandardMaterial({
         color: data.color,
-        roughness: 0.25,
-        metalness: 0.1,
+        roughness: 0.2,
+        metalness: 0.08,
         emissive: data.color,
-        emissiveIntensity: isClearPad ? 0.28 : isSizePad ? 0.22 : 0.12
+        emissiveIntensity: isClearPad ? 0.32 : isSizePad ? 0.26 : 0.16
       });
       const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 0.92 : 0.78, isClearPad ? 0.98 : 0.84, 0.26, 24),
+        new THREE.CylinderGeometry(isClearPad ? 0.94 : 0.80, isClearPad ? 1.00 : 0.86, 0.28, 28),
         padMat
       );
-      pad.position.set(data.x, 0.14, data.z);
+      pad.position.set(data.x, 0.15, data.z);
       pad.receiveShadow = true;
       pad.castShadow = true;
       scene.add(pad);
 
       const labelBg = isClearPad
-        ? 'rgba(159, 18, 57, 0.92)'
+        ? 'rgba(190, 18, 60, 0.95)'
         : isSizePad
-          ? 'rgba(88, 28, 135, 0.92)'
-          : 'rgba(15, 23, 42, 0.82)';
-      const labelColor = isClearPad ? '#fde047' : isSizePad ? '#f3e8ff' : '#f8fafc';
-      const labelBorder = isClearPad ? '#fb7185' : isSizePad ? '#c084fc' : 'rgba(255,255,255,0.25)';
+          ? 'rgba(107, 33, 168, 0.95)'
+          : 'rgba(30, 27, 75, 0.90)';
+      const labelColor = isClearPad ? '#fef08a' : isSizePad ? '#f3e8ff' : '#ffffff';
+      const labelBorder = isClearPad ? '#fda4af' : isSizePad ? '#d8b4fe' : '#f472b6';
+      const baseScaleW = isClearPad ? 2.15 : isSizePad ? 1.75 : 1.48;
+      const baseScaleH = isClearPad ? 0.56 : isSizePad ? 0.50 : 0.46;
 
       const labelSprite = createTextSprite(
         data.label,
         labelBg,
         labelColor,
         labelBorder,
-        isClearPad ? 2.15 : isSizePad ? 1.85 : 1.32,
-        isClearPad ? 0.52 : isSizePad ? 0.48 : 0.42
+        baseScaleW,
+        baseScaleH
       );
-      labelSprite.position.set(data.x, 0.62, data.z + 0.65);
+      // 2P 캐릭터 몸통에 가려지지 않도록 버튼 앞쪽(z + 1.02)에 배치
+      labelSprite.position.set(data.x, 0.52, data.z + 1.02);
       scene.add(labelSprite);
 
-      padMeshes.push({ mesh: pad, mat: padMat, data, wasStepped: false });
+      padMeshes.push({
+        mesh: pad,
+        mat: padMat,
+        ringMat,
+        labelSprite,
+        baseScaleW,
+        baseScaleH,
+        defaultRingColor: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0xffffff,
+        data,
+        wasStepped: false
+      });
     });
 
     // 1P 브러시 러너, 2P 팔레트 엔지니어 생성 및 커스터마이징 적용
@@ -688,6 +807,23 @@ window.BanBan.Scene3D = (function () {
     const youMarker = createYouMarker(roleType === 'P2' ? 'P2' : 'P1');
     root.add(youMarker);
 
+    // 6) 2P 전용: 발판 밟을 때 머리 위에 뜨는 실시간 말풍선 스프라이트
+    let stepBubble = null;
+    if (roleType === 'P2') {
+      const bCanvas = document.createElement('canvas');
+      bCanvas.width = 320;
+      bCanvas.height = 88;
+      const bTex = new THREE.CanvasTexture(bCanvas);
+      const bMat = new THREE.SpriteMaterial({ map: bTex, transparent: true, depthTest: false });
+      const bSprite = new THREE.Sprite(bMat);
+      bSprite.scale.set(2.45, 0.68, 1);
+      bSprite.position.set(0, 3.35, 0);
+      bSprite.renderOrder = 1000;
+      bSprite.visible = false;
+      root.add(bSprite);
+      stepBubble = { sprite: bSprite, canvas: bCanvas, tex: bTex, lastKey: '' };
+    }
+
     const charObj = {
       group: root,
       animGroup,
@@ -701,6 +837,7 @@ window.BanBan.Scene3D = (function () {
       brushPivot,
       tipMat,
       youMarker,
+      stepBubble,
       targetAngle: 0
     };
 
@@ -764,6 +901,11 @@ window.BanBan.Scene3D = (function () {
     if (charObj.youMarker && charObj.youMarker.visible) {
       charObj.youMarker.position.y = 2.52 + Math.sin(elapsedTime * 6) * 0.14;
       charObj.youMarker.rotation.y = -charObj.group.rotation.y;
+    }
+
+    if (charObj.stepBubble && charObj.stepBubble.sprite.visible) {
+      const baseY = (charObj.youMarker && charObj.youMarker.visible) ? 3.42 : 2.35;
+      charObj.stepBubble.sprite.position.y = baseY + Math.sin(elapsedTime * 8) * 0.10;
     }
 
     if (charObj.brushPivot) {
@@ -926,7 +1068,7 @@ window.BanBan.Scene3D = (function () {
       ctx.save();
       ctx.strokeStyle = State.activeColorHex;
       ctx.fillStyle = State.activeColorHex;
-      ctx.lineWidth = State.activeColorName === '지우개' ? Math.round(baseRadius * 1.55) : baseRadius;
+      ctx.lineWidth = String(State.activeColorName).includes('지우개') ? Math.round(baseRadius * 1.55) : baseRadius;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
@@ -989,6 +1131,53 @@ window.BanBan.Scene3D = (function () {
     }
   }
 
+  // 2P 머리 위 3D 말풍선에 현재 밟고 있는 버튼 이름 표시
+  function updateP2StepBubble(text, bgColor = '#ec4899', textColor = '#ffffff') {
+    if (!p2Obj || !p2Obj.stepBubble) return;
+    const { sprite, canvas, tex, lastKey } = p2Obj.stepBubble;
+
+    if (!text) {
+      sprite.visible = false;
+      p2Obj.stepBubble.lastKey = '';
+      return;
+    }
+
+    const key = `${text}|${bgColor}|${textColor}`;
+    sprite.visible = true;
+    if (lastKey === key) return;
+    p2Obj.stepBubble.lastKey = key;
+
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+
+    const r = 28;
+    const x = 10, y = 10, w = canvas.width - 20, h = canvas.height - 20;
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+
+    c.fillStyle = bgColor;
+    c.fill();
+    c.lineWidth = 6;
+    c.strokeStyle = '#ffffff';
+    c.stroke();
+
+    c.font = '900 30px Jua, Inter, Malgun Gothic, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = textColor;
+    c.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+    tex.needsUpdate = true;
+  }
+
   return {
     initScene,
     clearCanvas,
@@ -996,6 +1185,7 @@ window.BanBan.Scene3D = (function () {
     applyCharacterCustomization,
     syncRosterCustomizations,
     updateYouMarkersVisibility,
+    updateP2StepBubble,
     updateCharacterVisuals,
     spawnPaintSplatter,
     spawnPadRipple,

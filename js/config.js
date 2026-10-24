@@ -173,14 +173,14 @@ window.BanBan.Config = {
 
   // 2P 컨트롤 데크 발판 정의 (색상 6종 + 붓 굵기 전환 + 도화지 지우기)
   PADS_DATA: [
-    { id: 'RED',        label: '빨강',           x: -6.9, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color', note: 523.25 },
-    { id: 'YELLOW',     label: '노랑',           x: -5.1, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color', note: 587.33 },
-    { id: 'GREEN',      label: '초록',           x: -3.3, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color', note: 659.25 },
-    { id: 'BLUE',       label: '파랑',           x: -1.5, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color', note: 783.99 },
-    { id: 'BLACK',      label: '검정',           x:  0.3, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color', note: 880.00 },
-    { id: 'ERASER',     label: '지우개',         x:  2.1, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color', note: 1046.50 },
-    { id: 'BRUSH_SIZE', label: '🖌️붓굵기 변경',  x:  4.0, z: -6.8, color: 0xa855f7, hex: null,      type: 'size',  note: 698.46 },
-    { id: 'CLEAR_ALL',  label: '💥도화지 지우기', x:  7.1, z: -6.8, color: 0xe11d48, hex: null,      type: 'clear', note: 220.00 }
+    { id: 'RED',        label: '🍓빨강',         fullName: '딸기 빨강',     icon: '🍓', x: -6.9, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color', note: 523.25 },
+    { id: 'YELLOW',     label: '🍋노랑',         fullName: '레몬 노랑',     icon: '🍋', x: -5.1, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color', note: 587.33 },
+    { id: 'GREEN',      label: '🍏초록',         fullName: '멜론 초록',     icon: '🍏', x: -3.3, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color', note: 659.25 },
+    { id: 'BLUE',       label: '💧파랑',         fullName: '소다 파랑',     icon: '💧', x: -1.5, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color', note: 783.99 },
+    { id: 'BLACK',      label: '🍙검정',         fullName: '먹물 검정',     icon: '🍙', x:  0.3, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color', note: 880.00 },
+    { id: 'ERASER',     label: '🧼지우개',       fullName: '말랑 지우개',   icon: '🧼', x:  2.1, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color', note: 1046.50 },
+    { id: 'BRUSH_SIZE', label: '🖌️붓굵기',       fullName: '붓 굵기 변신',  icon: '🖌️', x:  4.0, z: -6.8, color: 0xa855f7, hex: '#a855f7', type: 'size',  note: 698.46 },
+    { id: 'CLEAR_ALL',  label: '💥전체지우기',   fullName: '도화지 초기화', icon: '💥', x:  7.1, z: -6.8, color: 0xe11d48, hex: '#e11d48', type: 'clear', note: 220.00 }
   ],
 
   // 폭죽 파티클 색상

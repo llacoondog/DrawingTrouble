@@ -20,8 +20,76 @@ window.onload = function () {
   const uiColorName = document.getElementById('color-name');
   const uiBrushSizeName = document.getElementById('brush-size-name');
   const btnSoundToggle = document.getElementById('btn-sound-toggle');
+  const padToastEl = document.getElementById('pad-step-toast');
+  const padToastIcon = document.getElementById('pad-toast-icon');
+  const padToastDot = document.getElementById('pad-toast-dot');
+  const padToastText = document.getElementById('pad-toast-text');
+  const padToastSub = document.getElementById('pad-toast-sub');
   const entryScreenEl = document.getElementById('entry-screen');
   const entryNicknameEl = document.getElementById('entry-nickname');
+  let lastSteppedPadId = null;
+
+  function updatePadStepHUD(padData) {
+    if (!padData) {
+      if (lastSteppedPadId !== null) {
+        lastSteppedPadId = null;
+        if (padToastEl) {
+          padToastEl.classList.add('hidden');
+          padToastEl.classList.remove('flex', 'pad-toast-active');
+        }
+        Scene3D.updateP2StepBubble(null);
+      }
+      return;
+    }
+
+    const curSize = Config.BRUSH_SIZES[State.brushSizeIdx] || Config.BRUSH_SIZES[1];
+    const stateKey = `${padData.id}_${State.brushSizeIdx}`;
+    if (lastSteppedPadId === stateKey) return;
+    lastSteppedPadId = stateKey;
+
+    let bubbleText = '';
+    let toastMain = '';
+    let toastSub = '';
+    let bgHex = padData.hex || '#ec4899';
+
+    if (padData.type === 'color') {
+      const isEraser = padData.id === 'ERASER';
+      bubbleText = `${padData.icon} ${padData.fullName} ON!`;
+      toastMain = `[${padData.fullName}] 버튼 밟는 중!`;
+      toastSub = isEraser ? `지우개 작동중 (${curSize.name})` : `물감 공급 ON (${curSize.name})`;
+      bgHex = isEraser ? '#475569' : padData.hex;
+    } else if (padData.type === 'size') {
+      bubbleText = `🖌️ ${curSize.badge}!`;
+      toastMain = `[붓 굵기 변경] 버튼 밟음!`;
+      toastSub = `현재 굵기: ${curSize.badge}`;
+      bgHex = '#7e22ce';
+    } else if (padData.type === 'clear') {
+      bubbleText = `💥 도화지 초기화!`;
+      toastMain = `[전체 지우기] 버튼 밟음!`;
+      toastSub = `새 도화지로 초기화!`;
+      bgHex = '#be123c';
+    }
+
+    Scene3D.updateP2StepBubble(bubbleText, bgHex, '#ffffff');
+
+    if (padToastEl) {
+      if (padToastIcon) padToastIcon.textContent = padData.icon || '🎨';
+      if (padToastText) padToastText.textContent = toastMain;
+      if (padToastSub) padToastSub.textContent = toastSub;
+      if (padToastDot) {
+        if (padData.type === 'color') {
+          padToastDot.classList.remove('hidden');
+          padToastDot.style.background = padData.hex || '#ffffff';
+        } else {
+          padToastDot.classList.add('hidden');
+        }
+      }
+      padToastEl.style.background = bgHex === '#111827' ? 'rgba(17, 24, 39, 0.95)' : `${bgHex}e6`;
+      padToastEl.classList.remove('hidden', 'pad-toast-active');
+      void padToastEl.offsetWidth;
+      padToastEl.classList.add('flex', 'pad-toast-active');
+    }
+  }
 
   if (btnSoundToggle) {
     btnSoundToggle.addEventListener('click', () => {
@@ -797,19 +865,33 @@ window.onload = function () {
       // --- 2P 발판 충돌 판정 ---
       let steppedColorHex = null;
       let steppedColorName = '발판 대기 (OFF)';
+      let steppedPadData = null;
       let currentlyOnClear = false;
       let currentlyOnSize = false;
       const padLerpDown = 1 - Math.pow(0.65, dtScale);
       const padLerpUp = 1 - Math.pow(0.75, dtScale);
 
       padMeshes.forEach((padItem) => {
-        const { mesh, mat, data } = padItem;
+        const { mesh, mat, ringMat, labelSprite, baseScaleW, baseScaleH, defaultRingColor, data } = padItem;
         const dist = Math.hypot(p2Obj.group.position.x - data.x, p2Obj.group.position.z - data.z);
         const isStepped = dist < 0.85;
 
         if (isStepped) {
+          steppedPadData = data;
           mesh.position.y += (0.04 - mesh.position.y) * padLerpDown;
-          mat.emissiveIntensity = 0.55;
+          mat.emissiveIntensity = 0.65;
+          if (ringMat) {
+            ringMat.color.setHex(0xfde047);
+            ringMat.emissive.setHex(0xfde047);
+            ringMat.emissiveIntensity = 0.7;
+          }
+          if (labelSprite) {
+            labelSprite.position.y += (0.94 - labelSprite.position.y) * padLerpDown;
+            const targetW = (baseScaleW || 1.5) * 1.32;
+            const targetH = (baseScaleH || 0.48) * 1.32;
+            labelSprite.scale.x += (targetW - labelSprite.scale.x) * padLerpDown;
+            labelSprite.scale.y += (targetH - labelSprite.scale.y) * padLerpDown;
+          }
           if (!padItem.wasStepped) {
             Scene3D.spawnPadRipple(data.x, data.z, data.color);
             if (data.type === 'color' && Sound) {
@@ -818,15 +900,27 @@ window.onload = function () {
           }
           if (data.type === 'color') {
             steppedColorHex = data.hex;
-            steppedColorName = data.label;
+            steppedColorName = data.fullName || data.label;
           } else if (data.type === 'size') {
             currentlyOnSize = true;
           } else if (data.type === 'clear') {
             currentlyOnClear = true;
           }
         } else {
-          mesh.position.y += (0.14 - mesh.position.y) * padLerpUp;
-          mat.emissiveIntensity = data.type === 'clear' ? 0.28 : data.type === 'size' ? 0.22 : 0.12;
+          mesh.position.y += (0.15 - mesh.position.y) * padLerpUp;
+          mat.emissiveIntensity = data.type === 'clear' ? 0.32 : data.type === 'size' ? 0.26 : 0.16;
+          if (ringMat) {
+            ringMat.color.setHex(defaultRingColor || 0xffffff);
+            ringMat.emissive.setHex(data.type === 'clear' ? 0xfbbf24 : data.type === 'size' ? 0xc084fc : 0x000000);
+            ringMat.emissiveIntensity = 0.15;
+          }
+          if (labelSprite) {
+            labelSprite.position.y += (0.52 - labelSprite.position.y) * padLerpUp;
+            const targetW = baseScaleW || 1.5;
+            const targetH = baseScaleH || 0.48;
+            labelSprite.scale.x += (targetW - labelSprite.scale.x) * padLerpUp;
+            labelSprite.scale.y += (targetH - labelSprite.scale.y) * padLerpUp;
+          }
         }
         padItem.wasStepped = isStepped;
       });
@@ -845,7 +939,7 @@ window.onload = function () {
           State.brushSizeIdx = (State.brushSizeIdx + 1) % Config.BRUSH_SIZES.length;
           const sizeObj = Config.BRUSH_SIZES[State.brushSizeIdx];
           if (Sound) Sound.playBrushSize(State.brushSizeIdx);
-          addChatMessage('', `🖌️ 2P가 [붓굵기 변경] 발판을 밟아 [${sizeObj.badge}]로 전환했습니다!`, 'system');
+          addChatMessage('', `🖌️ 2P가 [붓굵기] 버튼을 밟아 [${sizeObj.badge}]로 전환했습니다!`, 'system');
           Network.sendNetworkPacket({
             type: 'BRUSH_SIZE',
             brushSizeIdx: State.brushSizeIdx
@@ -857,8 +951,8 @@ window.onload = function () {
         if (currentlyOnClear && !State.wasOnClearPad) {
           Scene3D.clearCanvas();
           if (Sound) Sound.playClearCanvas();
-          addChatMessage('', '💥 2P 팔레트 엔지니어가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!', 'system');
-          Network.sendNetworkPacket({ type: 'CLEAR', by: '2P 팔레트 엔지니어' });
+          addChatMessage('', '💥 2P 팔레트 요정이 [전체 지우기] 버튼을 밟아 도화지를 초기화했습니다!', 'system');
+          Network.sendNetworkPacket({ type: 'CLEAR', by: '2P 팔레트 요정' });
         }
         State.wasOnClearPad = currentlyOnClear;
 
@@ -881,6 +975,9 @@ window.onload = function () {
         State.isPenDown = Boolean(steppedColorHex);
       }
 
+      // 현재 밟고 있는 버튼 이름 3D 말풍선 + 상단 빅 배너 실시간 표시
+      updatePadStepHUD(steppedPadData);
+
       uiPenStatus.textContent = State.isPenDown ? `ON (${State.activeColorName} 공급중)` : 'OFF (발판 떨어짐)';
       uiPenStatus.className = State.isPenDown ? 'text-emerald-400 font-extrabold' : 'text-rose-500 font-extrabold';
       uiColorPreview.style.background = State.activeColorHex || 'transparent';
@@ -893,6 +990,8 @@ window.onload = function () {
       p2Obj.tipMat.color.set(State.activeColorHex || '#63666f');
 
       Scene3D.paintStrokeOnBoard();
+    } else {
+      updatePadStepHUD(null);
     }
 
     Scene3D.updateCharacterVisuals(p1Obj, State.p1State.vx, State.p1State.vz, elapsedTime, State.isPenDown, dtScale);

@@ -10,8 +10,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <!-- PeerJS CDN (100% 무료 P2P WebRTC 멀티플레이) -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <!-- Google Fonts (Inter & Pretendard fallback) -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Google Fonts (Jua 귀여운 타이틀 폰트 & Inter) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Jua&display=swap" rel="stylesheet">
   <!-- 커스텀 스타일시트 -->
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -21,42 +21,54 @@
   <div id="canvas-container" class="absolute inset-0 z-0"></div>
 
   <!-- 상단 상태 표시바 -->
-  <div id="top-bar" class="absolute top-3 left-3 right-3 lg:right-[336px] z-10 flex flex-wrap items-center justify-between gap-2 bg-[#161923]/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-2xl">
+  <div id="top-bar" class="absolute top-3 left-3 right-3 lg:right-[336px] z-10 flex flex-wrap items-center justify-between gap-2 bg-[#251d3a]/90 backdrop-blur-md px-4 py-2.5 rounded-3xl border-2 border-pink-400/30 shadow-2xl">
     <div class="flex flex-wrap items-center gap-2.5">
-      <span id="round-text" class="bg-indigo-600 px-3 py-1 rounded-xl font-extrabold text-xs sm:text-sm tracking-wide shadow">ROUND 1</span>
-      <div id="timer-text" class="text-lg sm:text-xl font-black text-sky-400 bg-black/40 px-3 py-0.5 rounded-xl min-w-[58px] text-center">60s</div>
-      <div id="prompt-text" class="text-sm sm:text-base font-extrabold text-amber-300 px-1">제시어: (대기실 준비 중...)</div>
+      <span id="round-text" class="bg-gradient-to-r from-pink-500 to-purple-500 px-3.5 py-1 rounded-2xl font-extrabold text-xs sm:text-sm tracking-wide shadow border border-white/20">🍓 ROUND 1</span>
+      <div id="timer-text" class="text-lg sm:text-xl font-black text-amber-300 bg-black/35 px-3.5 py-0.5 rounded-2xl min-w-[62px] text-center border border-white/10">60s</div>
+      <div id="prompt-text" class="text-sm sm:text-base font-extrabold text-yellow-200 px-1 drop-shadow">제시어: (대기실 준비 중...)</div>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
       <!-- 펜 ON/OFF 상태 (2P가 색 발판을 밟고 있을 때만 자동 ON) -->
-      <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
-        <span class="text-slate-400">붓 상태:</span>
-        <span id="pen-status" class="text-rose-500 font-extrabold">OFF (발판 떨어짐)</span>
+      <div class="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-2xl text-xs font-bold border border-white/15">
+        <span class="text-pink-200">🎨 물감:</span>
+        <span id="pen-status" class="text-rose-400 font-extrabold">OFF (발판 대기)</span>
       </div>
       <!-- 현재 공급 중인 색상 -->
-      <div class="flex items-center gap-1.5 bg-white/5 px-3 py-1 rounded-xl text-xs font-bold border border-white/5">
-        <div id="color-preview" class="w-3.5 h-3.5 rounded-full border-2 border-white" style="background: transparent;"></div>
-        <span id="color-name" class="text-slate-200">발판 대기</span>
+      <div class="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-2xl text-xs font-bold border border-white/15">
+        <div id="color-preview" class="w-4 h-4 rounded-full border-2 border-white shadow-sm" style="background: transparent;"></div>
+        <span id="color-name" class="text-white">발판 대기</span>
       </div>
       <!-- 현재 붓 굵기 단계 -->
-      <div class="flex items-center gap-1.5 bg-purple-500/15 px-3 py-1 rounded-xl text-xs font-bold border border-purple-400/30">
-        <span class="text-purple-300">🖌️ 굵기:</span>
-        <span id="brush-size-name" class="text-purple-100 font-extrabold">기본붓 (중)</span>
+      <div class="flex items-center gap-1.5 bg-purple-500/25 px-3 py-1 rounded-2xl text-xs font-bold border border-purple-300/40">
+        <span class="text-purple-200">🖌️ 굵기:</span>
+        <span id="brush-size-name" class="text-yellow-200 font-extrabold">기본붓 (중)</span>
       </div>
       <!-- 효과음 ON/OFF 토글 버튼 -->
-      <button id="btn-sound-toggle" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-300 text-xs font-extrabold px-2.5 py-1.5 rounded-xl transition shadow border border-white/10 flex items-center gap-1" title="효과음 켜기/끄기">
+      <button id="btn-sound-toggle" class="bg-indigo-900/80 hover:bg-indigo-800 text-amber-300 text-xs font-extrabold px-3 py-1.5 rounded-2xl transition shadow border border-indigo-400/30 flex items-center gap-1" title="효과음 켜기/끄기">
         <span>🔊 효과음: ON</span>
       </button>
       <!-- 캐릭터 꾸미기 대기화면 열기 버튼 -->
-      <button id="btn-open-custom" class="bg-pink-600 hover:bg-pink-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition shadow border border-pink-400/50 flex items-center gap-1">
-        <span>👕 캐릭터 꾸미기</span>
+      <button id="btn-open-custom" class="bg-pink-500 hover:bg-pink-400 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-2xl transition shadow-md border-b-4 border-pink-700 flex items-center gap-1">
+        <span>🎀 캐릭터 꾸미기</span>
       </button>
       <!-- 멀티플레이 대기방 열기 버튼 -->
-      <button id="btn-open-multi" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-lg border border-purple-400/50 flex items-center gap-1.5">
-        <span>🌐 멀티플레이 대기방</span>
+      <button id="btn-open-multi" class="bg-purple-500 hover:bg-purple-400 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-2xl transition shadow-md border-b-4 border-purple-700 flex items-center gap-1.5">
+        <span>🎪 멀티 대기방</span>
       </button>
     </div>
+  </div>
+
+  <!-- 🐾 발판 밟음 실시간 빅 배너 (무슨 버튼을 밟고 있는지 한눈에 표시!) -->
+  <div
+    id="pad-step-toast"
+    class="pointer-events-none fixed top-[122px] sm:top-[118px] left-1/2 lg:left-[calc(50%-160px)] -translate-x-1/2 z-20 hidden items-center gap-2.5 px-5 py-2 rounded-full border-2 border-white shadow-2xl text-sm sm:text-base font-black tracking-wide"
+    style="background: rgba(37, 29, 58, 0.92);"
+  >
+    <span id="pad-toast-icon" class="text-xl">🎨</span>
+    <span id="pad-toast-dot" class="w-4 h-4 rounded-full border-2 border-white shadow-inner hidden"></span>
+    <span id="pad-toast-text" class="text-white drop-shadow">빨강 발판 밟는 중!</span>
+    <span id="pad-toast-sub" class="text-xs px-2.5 py-0.5 rounded-full bg-black/30 text-yellow-200">펜 ON</span>
   </div>
 
   <!-- 좌측 상단 모드 & 2P AI 도우미 스위처 -->
@@ -83,23 +95,23 @@
   </div>
 
   <!-- 좌측 하단 조작 가이드 -->
-  <div id="controls-guide" class="hidden sm:block absolute bottom-3 left-3 z-10 bg-[#161923]/90 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/10 text-xs leading-relaxed shadow-xl max-w-md">
-    <div class="text-slate-200">
+  <div id="controls-guide" class="hidden sm:block absolute bottom-3 left-3 z-10 bg-[#251d3a]/90 backdrop-blur-md px-4 py-3 rounded-3xl border-2 border-pink-400/25 text-xs leading-relaxed shadow-xl max-w-md">
+    <div class="text-pink-100">
       🎨 <b>1P 브러시 러너 (도화지):</b>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">W</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">A</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">S</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">D</kbd> 이동 (머리 위 <b>YOU ▼</b> 화살표 확인!)
+      <kbd class="bg-pink-500/40 border border-pink-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">W</kbd>
+      <kbd class="bg-pink-500/40 border border-pink-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">A</kbd>
+      <kbd class="bg-pink-500/40 border border-pink-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">S</kbd>
+      <kbd class="bg-pink-500/40 border border-pink-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">D</kbd> 이동 (머리 위 <b>YOU ▼</b> 화살표 확인!)
     </div>
-    <div class="text-slate-200 mt-1">
-      🕹️ <b>2P 팔레트 엔지니어 (상단 데크):</b>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↑</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">←</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↓</kbd>
-      <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">→</kbd> <b>색 발판을 밟고 있는 동안만 펜 ON!</b>
+    <div class="text-cyan-100 mt-1">
+      🕹️ <b>2P 팔레트 요정 (상단 데크):</b>
+      <kbd class="bg-cyan-500/40 border border-cyan-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">↑</kbd>
+      <kbd class="bg-cyan-500/40 border border-cyan-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">←</kbd>
+      <kbd class="bg-cyan-500/40 border border-cyan-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">↓</kbd>
+      <kbd class="bg-cyan-500/40 border border-cyan-300/40 text-yellow-200 px-1.5 py-0.5 rounded-lg font-bold">→</kbd> <b>색 버튼을 꾹 밟고 있으면 물감 ON!</b>
     </div>
-    <div class="text-purple-300 mt-1 font-semibold">
-      🖌️ <b>붓 굵기 & 지우기:</b> 2P가 <b>[🖌️붓굵기 변경]</b> 발판을 밟으면 굵기(가는붓·기본붓·왕붓) 전환! 오른쪽 끝 <b>[💥도화지 지우기]</b>를 밟으면 초기화!
+    <div class="text-purple-200 mt-1 font-semibold">
+      🖌️ <b>굵기 & 초기화:</b> <b>[🖌️붓굵기]</b> 버튼을 밟으면 굵기 변신! 오른쪽 끝 <b>[💥도화지 지우기]</b>를 밟으면 새 종이!
     </div>
   </div>
 
@@ -107,7 +119,7 @@
   <div id="right-panel" class="
     absolute bottom-3 right-3 left-3 h-56
     lg:top-3 lg:bottom-3 lg:right-3 lg:left-auto lg:w-[320px] lg:h-auto
-    z-10 bg-[#161923]/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden
+    z-10 bg-[#251d3a]/95 backdrop-blur-xl rounded-3xl border-2 border-pink-400/30 shadow-2xl flex flex-col overflow-hidden
   ">
     <!-- 패널 헤더 -->
     <div class="px-4 py-2.5 bg-white/5 border-b border-white/10 flex items-center justify-between">
