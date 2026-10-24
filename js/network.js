@@ -299,6 +299,12 @@ window.BanBan.Network = (function () {
       State.isPenDown = Boolean(data.isPenDown);
       if (data.activeColorHex !== undefined) State.activeColorHex = data.activeColorHex;
       if (data.activeColorName !== undefined) State.activeColorName = data.activeColorName;
+      if (typeof data.brushSizeIdx === 'number') State.brushSizeIdx = data.brushSizeIdx;
+    } else if (data.type === 'BRUSH_SIZE') {
+      if (typeof data.brushSizeIdx === 'number') {
+        State.brushSizeIdx = data.brushSizeIdx;
+        if (window.BanBan.Sound) window.BanBan.Sound.playBrushSize(State.brushSizeIdx);
+      }
     } else if (data.type === 'CUSTOM_UPDATE' && data.peerId && data.custom) {
       const target = State.playerRoster.find(p => p.id === data.peerId);
       if (target) {
@@ -361,6 +367,7 @@ window.BanBan.Network = (function () {
       callbacks.onStartWordSelection(true, State.candidatePromptIndices);
     } else if (data.type === 'CLEAR') {
       Scene3D.clearCanvas();
+      if (window.BanBan.Sound) window.BanBan.Sound.playClearCanvas();
       if (data.by) {
         callbacks.onAddChatMessage('', `💥 ${data.by}가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!`, 'system');
       }

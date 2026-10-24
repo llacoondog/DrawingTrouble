@@ -4,7 +4,7 @@
 window.BanBan = window.BanBan || {};
 
 window.onload = function () {
-  const { Config, State, Scene3D, Network } = window.BanBan;
+  const { Config, State, Sound, Scene3D, Network } = window.BanBan;
 
   // 1. 3D 씬 및 프리뷰 캔버스 초기화
   const container = document.getElementById('canvas-container');
@@ -18,8 +18,24 @@ window.onload = function () {
   const uiPenStatus = document.getElementById('pen-status');
   const uiColorPreview = document.getElementById('color-preview');
   const uiColorName = document.getElementById('color-name');
+  const uiBrushSizeName = document.getElementById('brush-size-name');
+  const btnSoundToggle = document.getElementById('btn-sound-toggle');
   const entryScreenEl = document.getElementById('entry-screen');
   const entryNicknameEl = document.getElementById('entry-nickname');
+
+  if (btnSoundToggle) {
+    btnSoundToggle.addEventListener('click', () => {
+      State.soundEnabled = !State.soundEnabled;
+      if (State.soundEnabled) {
+        btnSoundToggle.innerHTML = '<span>🔊 효과음: ON</span>';
+        btnSoundToggle.className = 'bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-300 text-xs font-extrabold px-2.5 py-1.5 rounded-xl transition shadow border border-white/10 flex items-center gap-1';
+        if (Sound) Sound.playClick();
+      } else {
+        btnSoundToggle.innerHTML = '<span>🔇 효과음: OFF</span>';
+        btnSoundToggle.className = 'bg-slate-900/90 hover:bg-slate-800 active:scale-95 text-slate-500 text-xs font-bold px-2.5 py-1.5 rounded-xl transition shadow border border-white/5 flex items-center gap-1';
+      }
+    });
+  }
 
   const keys = {};
   function clearAllKeys() {
@@ -61,6 +77,7 @@ window.onload = function () {
           btn.style.backgroundColor = c.hex;
           btn.innerHTML = isSelected ? '<span class="text-white text-xs font-black drop-shadow">✓</span>' : '';
           btn.addEventListener('click', () => {
+            if (Sound) Sound.playClick();
             State.myCustom.color = c.hex;
             Config.saveProfile(State.myNickname, State.myCustom);
             renderCustomButtons();
@@ -84,6 +101,7 @@ window.onload = function () {
           }`;
           btn.innerHTML = `<span>${h.icon}</span><span>${h.name}</span>`;
           btn.addEventListener('click', () => {
+            if (Sound) Sound.playClick();
             State.myCustom.hat = h.id;
             Config.saveProfile(State.myNickname, State.myCustom);
             renderCustomButtons();
@@ -107,6 +125,7 @@ window.onload = function () {
           }`;
           btn.innerHTML = `<span>${f.icon}</span><span>${f.name}</span>`;
           btn.addEventListener('click', () => {
+            if (Sound) Sound.playClick();
             State.myCustom.face = f.id;
             Config.saveProfile(State.myNickname, State.myCustom);
             renderCustomButtons();
@@ -121,6 +140,7 @@ window.onload = function () {
     const btnRandom = document.getElementById('btn-random-custom');
     if (btnRandom) {
       btnRandom.addEventListener('click', () => {
+        if (Sound) Sound.playClick();
         const randColor = Config.CUSTOM_COLORS[Math.floor(Math.random() * Config.CUSTOM_COLORS.length)];
         const randHat = Config.CUSTOM_HATS[Math.floor(Math.random() * Config.CUSTOM_HATS.length)];
         const randFace = Config.CUSTOM_FACES[Math.floor(Math.random() * Config.CUSTOM_FACES.length)];
@@ -394,12 +414,13 @@ window.onload = function () {
     Scene3D.clearConfetti();
 
     p1Obj.group.position.set(0, 0, 2.2);
-    p2Obj.group.position.set(1.1, 0, -6.8);
+    p2Obj.group.position.set(0.3, 0, -6.8);
     State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
     State.isPenDown = false;
     State.wasOnClearPad = false;
+    State.wasOnSizePad = false;
     State.aiColorIdx = 4;
-    State.aiTargetX = 1.1;
+    State.aiTargetX = 0.3;
 
     // 내가 1P 권한이 있는지 확인 (로컬 모드에서는 항상 직접 선택 가능, 멀티에서는 1P만 선택)
     const me = State.playerRoster.find(p => p.id === State.myPeerId);
@@ -502,12 +523,13 @@ window.onload = function () {
     Scene3D.clearConfetti();
 
     p1Obj.group.position.set(0, 0, 2.2);
-    p2Obj.group.position.set(1.1, 0, -6.8);
+    p2Obj.group.position.set(0.3, 0, -6.8);
     State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
     State.isPenDown = false;
     State.wasOnClearPad = false;
+    State.wasOnSizePad = false;
     State.aiColorIdx = 4;
-    State.aiTargetX = 1.1;
+    State.aiTargetX = 0.3;
 
     const p1Player = State.playerRoster.find(p => p.role === 'P1');
     const p2Player = State.playerRoster.find(p => p.role === 'P2');
@@ -516,6 +538,7 @@ window.onload = function () {
       : '';
 
     addChatMessage('', `🎨 제시어 선택 완료! ROUND ${State.currentRound} 드로잉 시작!${roleSummary}`, 'system');
+    if (Sound) Sound.playRoundStart();
 
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
@@ -523,11 +546,15 @@ window.onload = function () {
       State.timeLeft--;
       timerTextEl.textContent = `${State.timeLeft}s`;
 
-      if (State.timeLeft <= 10) timerTextEl.classList.add('urgent-timer');
+      if (State.timeLeft <= 10 && State.timeLeft > 0) {
+        timerTextEl.classList.add('urgent-timer');
+        if (Sound) Sound.playTick(State.timeLeft <= 3);
+      }
 
       if (State.timeLeft === 30) {
         const hintText = State.currentPrompt.hint || Config.extractChosung(State.currentPrompt.word);
         addChatMessage('', `💡 [초성 힌트] ${hintText}`, 'hint');
+        if (Sound) Sound.playHint();
       }
 
       const botToggle = document.getElementById('bot-toggle');
@@ -570,6 +597,7 @@ window.onload = function () {
       const coopNames = [p1Player?.nickname, p2Player?.nickname].filter(Boolean).join(' & ');
 
       Scene3D.spawnConfettiExplosion();
+      if (Sound) Sound.playWin();
       modalTitle.textContent = '🎉 정답 판정 성공!';
       modalTitle.className = 'text-2xl font-black text-emerald-400 mb-1';
       modalDesc.innerHTML =
@@ -577,6 +605,7 @@ window.onload = function () {
         `🤝 1P·2P 협동 보너스 (${coopNames || '1P & 2P'}): <b class="text-sky-400">+${coopBonus}점</b><br>` +
         `제시어: <b class="text-amber-300">${State.currentPrompt.word}</b>`;
     } else {
+      if (Sound) Sound.playTimeUp();
       modalTitle.textContent = '⏰ 아쉽게 시간 초과!';
       modalTitle.className = 'text-2xl font-black text-rose-500 mb-1';
       modalDesc.innerHTML = `정답자가 나오지 않았습니다.<br>제시어: <b class="text-amber-300">${State.currentPrompt.word}</b>`;
@@ -629,7 +658,7 @@ window.onload = function () {
 
   // 최초 접속 시 대기화면(LOBBY) 상태 세팅
   p1Obj.group.position.set(0, 0, 2.2);
-  p2Obj.group.position.set(1.1, 0, -6.8);
+  p2Obj.group.position.set(0.3, 0, -6.8);
   timerTextEl.textContent = '대기중';
   updatePromptVisibility();
   addChatMessage('', '✨ 반반 무마니 3D에 오신 것을 환영합니다! 대기화면에서 내 캐릭터를 꾸미고 시작해 보세요.', 'system');
@@ -661,7 +690,7 @@ window.onload = function () {
 
   // 8. 메인 애니메이션 루프 (60FPS 기준 deltaTime 정규화)
   const clock = new THREE.Clock();
-  const colorPadXList = [-6.5, -4.6, -2.7, -0.8, 1.1];
+  const colorPadXList = [-6.9, -5.1, -3.3, -1.5, 0.3];
 
   function animate() {
     requestAnimationFrame(animate);
@@ -769,29 +798,35 @@ window.onload = function () {
       let steppedColorHex = null;
       let steppedColorName = '발판 대기 (OFF)';
       let currentlyOnClear = false;
+      let currentlyOnSize = false;
       const padLerpDown = 1 - Math.pow(0.65, dtScale);
       const padLerpUp = 1 - Math.pow(0.75, dtScale);
 
       padMeshes.forEach((padItem) => {
         const { mesh, mat, data } = padItem;
         const dist = Math.hypot(p2Obj.group.position.x - data.x, p2Obj.group.position.z - data.z);
-        const isStepped = dist < 0.88;
+        const isStepped = dist < 0.85;
 
         if (isStepped) {
           mesh.position.y += (0.04 - mesh.position.y) * padLerpDown;
-          mat.emissiveIntensity = 0.5;
+          mat.emissiveIntensity = 0.55;
           if (!padItem.wasStepped) {
             Scene3D.spawnPadRipple(data.x, data.z, data.color);
+            if (data.type === 'color' && Sound) {
+              Sound.playColorPad(data.note);
+            }
           }
           if (data.type === 'color') {
             steppedColorHex = data.hex;
             steppedColorName = data.label;
+          } else if (data.type === 'size') {
+            currentlyOnSize = true;
           } else if (data.type === 'clear') {
             currentlyOnClear = true;
           }
         } else {
           mesh.position.y += (0.14 - mesh.position.y) * padLerpUp;
-          mat.emissiveIntensity = data.type === 'clear' ? 0.28 : 0.12;
+          mat.emissiveIntensity = data.type === 'clear' ? 0.28 : data.type === 'size' ? 0.22 : 0.12;
         }
         padItem.wasStepped = isStepped;
       });
@@ -805,8 +840,23 @@ window.onload = function () {
         State.activeColorName = steppedColorName;
         State.isPenDown = Boolean(steppedColorHex);
 
+        // [🖌️붓굵기 변경] 발판: 밟는 순간 3단계(가는붓 -> 기본붓 -> 왕붓) 순환 전환
+        if (currentlyOnSize && !State.wasOnSizePad) {
+          State.brushSizeIdx = (State.brushSizeIdx + 1) % Config.BRUSH_SIZES.length;
+          const sizeObj = Config.BRUSH_SIZES[State.brushSizeIdx];
+          if (Sound) Sound.playBrushSize(State.brushSizeIdx);
+          addChatMessage('', `🖌️ 2P가 [붓굵기 변경] 발판을 밟아 [${sizeObj.badge}]로 전환했습니다!`, 'system');
+          Network.sendNetworkPacket({
+            type: 'BRUSH_SIZE',
+            brushSizeIdx: State.brushSizeIdx
+          });
+        }
+        State.wasOnSizePad = currentlyOnSize;
+
+        // [💥도화지 지우기] 발판
         if (currentlyOnClear && !State.wasOnClearPad) {
           Scene3D.clearCanvas();
+          if (Sound) Sound.playClearCanvas();
           addChatMessage('', '💥 2P 팔레트 엔지니어가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!', 'system');
           Network.sendNetworkPacket({ type: 'CLEAR', by: '2P 팔레트 엔지니어' });
         }
@@ -821,7 +871,8 @@ window.onload = function () {
             vz: p2State.vz,
             isPenDown: State.isPenDown,
             activeColorHex: State.activeColorHex,
-            activeColorName: State.activeColorName
+            activeColorName: State.activeColorName,
+            brushSizeIdx: State.brushSizeIdx
           });
         }
       } else {
@@ -834,6 +885,10 @@ window.onload = function () {
       uiPenStatus.className = State.isPenDown ? 'text-emerald-400 font-extrabold' : 'text-rose-500 font-extrabold';
       uiColorPreview.style.background = State.activeColorHex || 'transparent';
       uiColorName.textContent = State.activeColorName;
+      if (uiBrushSizeName) {
+        const curSize = Config.BRUSH_SIZES[State.brushSizeIdx] || Config.BRUSH_SIZES[1];
+        uiBrushSizeName.textContent = curSize.badge;
+      }
       p1Obj.tipMat.color.set(State.activeColorHex || '#ffffff');
       p2Obj.tipMat.color.set(State.activeColorHex || '#63666f');
 

@@ -164,15 +164,23 @@ window.BanBan.Config = {
     '정체불명의 생명체 탄생ㅋㅋ'
   ],
 
-  // 2P 컨트롤 데크 발판 정의
+  // 3단계 붓 굵기 설정 (가는붓 / 기본붓 / 왕붓)
+  BRUSH_SIZES: [
+    { id: 'THIN',   name: '가는붓', radius: 12, scale: 0.68, badge: '가는붓 (소)' },
+    { id: 'MEDIUM', name: '기본붓', radius: 26, scale: 1.00, badge: '기본붓 (중)' },
+    { id: 'THICK',  name: '왕붓',   radius: 48, scale: 1.45, badge: '왕붓 (대)' }
+  ],
+
+  // 2P 컨트롤 데크 발판 정의 (색상 6종 + 붓 굵기 전환 + 도화지 지우기)
   PADS_DATA: [
-    { id: 'RED',       label: '빨강',           x: -6.5, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color' },
-    { id: 'YELLOW',    label: '노랑',           x: -4.6, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color' },
-    { id: 'GREEN',     label: '초록',           x: -2.7, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color' },
-    { id: 'BLUE',      label: '파랑',           x: -0.8, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color' },
-    { id: 'BLACK',     label: '검정',           x:  1.1, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color' },
-    { id: 'ERASER',    label: '지우개',         x:  3.0, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color' },
-    { id: 'CLEAR_ALL', label: '💥도화지 지우기', x:  7.0, z: -6.8, color: 0xe11d48, hex: null,      type: 'clear' }
+    { id: 'RED',        label: '빨강',           x: -6.9, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color', note: 523.25 },
+    { id: 'YELLOW',     label: '노랑',           x: -5.1, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color', note: 587.33 },
+    { id: 'GREEN',      label: '초록',           x: -3.3, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color', note: 659.25 },
+    { id: 'BLUE',       label: '파랑',           x: -1.5, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color', note: 783.99 },
+    { id: 'BLACK',      label: '검정',           x:  0.3, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color', note: 880.00 },
+    { id: 'ERASER',     label: '지우개',         x:  2.1, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color', note: 1046.50 },
+    { id: 'BRUSH_SIZE', label: '🖌️붓굵기 변경',  x:  4.0, z: -6.8, color: 0xa855f7, hex: null,      type: 'size',  note: 698.46 },
+    { id: 'CLEAR_ALL',  label: '💥도화지 지우기', x:  7.1, z: -6.8, color: 0xe11d48, hex: null,      type: 'clear', note: 220.00 }
   ],
 
   // 폭죽 파티클 색상
@@ -204,12 +212,15 @@ window.BanBan.State = {
   p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86 },
   p2State: { vx: 0, vz: 0, accel: 0.024, friction: 0.82 },
 
-  // 2P AI 및 펜/색상 상태
-  aiTargetX: 1.1,
+  // 2P AI 및 펜/색상/굵기/사운드 상태
+  aiTargetX: 0.3,
   aiColorIdx: 4,
   aiTimer: 0,
   isPenDown: false,
   wasOnClearPad: false,
+  wasOnSizePad: false,
+  brushSizeIdx: 1, // 0: 가는붓, 1: 기본붓, 2: 왕붓
+  soundEnabled: true,
   activeColorHex: null,
   activeColorName: '발판 대기 (OFF)',
 

@@ -39,6 +39,15 @@
         <div id="color-preview" class="w-3.5 h-3.5 rounded-full border-2 border-white" style="background: transparent;"></div>
         <span id="color-name" class="text-slate-200">발판 대기</span>
       </div>
+      <!-- 현재 붓 굵기 단계 -->
+      <div class="flex items-center gap-1.5 bg-purple-500/15 px-3 py-1 rounded-xl text-xs font-bold border border-purple-400/30">
+        <span class="text-purple-300">🖌️ 굵기:</span>
+        <span id="brush-size-name" class="text-purple-100 font-extrabold">기본붓 (중)</span>
+      </div>
+      <!-- 효과음 ON/OFF 토글 버튼 -->
+      <button id="btn-sound-toggle" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-300 text-xs font-extrabold px-2.5 py-1.5 rounded-xl transition shadow border border-white/10 flex items-center gap-1" title="효과음 켜기/끄기">
+        <span>🔊 효과음: ON</span>
+      </button>
       <!-- 캐릭터 꾸미기 대기화면 열기 버튼 -->
       <button id="btn-open-custom" class="bg-pink-600 hover:bg-pink-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition shadow border border-pink-400/50 flex items-center gap-1">
         <span>👕 캐릭터 꾸미기</span>
@@ -89,8 +98,8 @@
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">↓</kbd>
       <kbd class="bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded font-bold">→</kbd> <b>색 발판을 밟고 있는 동안만 펜 ON!</b>
     </div>
-    <div class="text-rose-300 mt-1 font-semibold">
-      💥 <b>도화지 지우기:</b> 2P가 상단 데크 오른쪽 끝 멀리 있는 <b>[💥도화지 지우기]</b> 발판을 밟으면 초기화!
+    <div class="text-purple-300 mt-1 font-semibold">
+      🖌️ <b>붓 굵기 & 지우기:</b> 2P가 <b>[🖌️붓굵기 변경]</b> 발판을 밟으면 굵기(가는붓·기본붓·왕붓) 전환! 오른쪽 끝 <b>[💥도화지 지우기]</b>를 밟으면 초기화!
     </div>
   </div>
 
@@ -338,6 +347,7 @@
 
   <!-- 모듈화된 클라이언트 스크립트 로드 (file:// 및 웹 서버 모두 호환) -->
   <script src="js/config.js"></script>
+  <script src="js/sound.js"></script>
   <script src="js/scene3d.js"></script>
   <script src="js/network.js"></script>
   <script src="js/game.js"></script>

@@ -461,21 +461,22 @@ window.BanBan.Scene3D = (function () {
     controlDeck.receiveShadow = true;
     scene.add(controlDeck);
 
-    // 색상 발판 구역과 우측 멀리 떨어진 [도화지 지우기] 구역 사이 경고 분리선
+    // 색상/굵기 발판 구역과 우측 멀리 떨어진 [도화지 지우기] 구역 사이 경고 분리선
     const dividerLine = new THREE.Mesh(
       new THREE.BoxGeometry(0.18, 0.04, 3.8),
       new THREE.MeshBasicMaterial({ color: 0xf43f5e })
     );
-    dividerLine.position.set(5.0, 0.02, -6.8);
+    dividerLine.position.set(5.55, 0.02, -6.8);
     scene.add(dividerLine);
 
     // 컨트롤 데크 위 원통형 압력 발판(Pressure Pads) 및 라벨 생성
     Config.PADS_DATA.forEach(data => {
       const isClearPad = data.type === 'clear';
+      const isSizePad = data.type === 'size';
       const baseRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 1.12 : 0.96, isClearPad ? 1.18 : 1.02, 0.1, 24),
+        new THREE.CylinderGeometry(isClearPad ? 1.12 : 0.94, isClearPad ? 1.18 : 1.00, 0.1, 24),
         new THREE.MeshStandardMaterial({
-          color: isClearPad ? 0xfbbf24 : 0x475569,
+          color: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0x475569,
           roughness: 0.4,
           metalness: 0.5
         })
@@ -489,10 +490,10 @@ window.BanBan.Scene3D = (function () {
         roughness: 0.25,
         metalness: 0.1,
         emissive: data.color,
-        emissiveIntensity: isClearPad ? 0.28 : 0.12
+        emissiveIntensity: isClearPad ? 0.28 : isSizePad ? 0.22 : 0.12
       });
       const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 0.92 : 0.80, isClearPad ? 0.98 : 0.86, 0.26, 24),
+        new THREE.CylinderGeometry(isClearPad ? 0.92 : 0.78, isClearPad ? 0.98 : 0.84, 0.26, 24),
         padMat
       );
       pad.position.set(data.x, 0.14, data.z);
@@ -500,13 +501,21 @@ window.BanBan.Scene3D = (function () {
       pad.castShadow = true;
       scene.add(pad);
 
+      const labelBg = isClearPad
+        ? 'rgba(159, 18, 57, 0.92)'
+        : isSizePad
+          ? 'rgba(88, 28, 135, 0.92)'
+          : 'rgba(15, 23, 42, 0.82)';
+      const labelColor = isClearPad ? '#fde047' : isSizePad ? '#f3e8ff' : '#f8fafc';
+      const labelBorder = isClearPad ? '#fb7185' : isSizePad ? '#c084fc' : 'rgba(255,255,255,0.25)';
+
       const labelSprite = createTextSprite(
         data.label,
-        isClearPad ? 'rgba(159, 18, 57, 0.92)' : 'rgba(15, 23, 42, 0.82)',
-        isClearPad ? '#fde047' : '#f8fafc',
-        isClearPad ? '#fb7185' : 'rgba(255,255,255,0.25)',
-        isClearPad ? 2.15 : 1.35,
-        isClearPad ? 0.52 : 0.42
+        labelBg,
+        labelColor,
+        labelBorder,
+        isClearPad ? 2.15 : isSizePad ? 1.85 : 1.32,
+        isClearPad ? 0.52 : isSizePad ? 0.48 : 0.42
       );
       labelSprite.position.set(data.x, 0.62, data.z + 0.65);
       scene.add(labelSprite);
@@ -669,6 +678,8 @@ window.BanBan.Scene3D = (function () {
       bristle.position.y = -0.78;
       bristle.castShadow = true;
       brushPivot.add(bristle);
+      brushPivot.userData.bristle = bristle;
+      brushPivot.userData.ferrule = ferrule;
 
       animGroup.add(brushPivot);
     }
@@ -761,6 +772,15 @@ window.BanBan.Scene3D = (function () {
       const brushLerp = 1 - Math.pow(0.8, dtScale);
       charObj.brushPivot.rotation.x += (targetPitch - charObj.brushPivot.rotation.x) * brushLerp;
       charObj.brushPivot.position.y += (targetY - charObj.brushPivot.position.y) * brushLerp;
+
+      // 붓 굵기 단계에 따라 1P의 3D 붓모(bristle) 크기 실시간 스케일링
+      const sizeObj = Config.BRUSH_SIZES[State.brushSizeIdx] || Config.BRUSH_SIZES[1];
+      const targetScale = sizeObj ? sizeObj.scale : 1.0;
+      const bristle = charObj.brushPivot.userData.bristle;
+      if (bristle) {
+        bristle.scale.x += (targetScale - bristle.scale.x) * brushLerp;
+        bristle.scale.z += (targetScale - bristle.scale.z) * brushLerp;
+      }
     }
   }
 
@@ -900,10 +920,13 @@ window.BanBan.Scene3D = (function () {
     const pixelY = uvY * drawCanvas.height;
 
     if (State.isPenDown && State.activeColorHex) {
+      const sizeObj = Config.BRUSH_SIZES[State.brushSizeIdx] || Config.BRUSH_SIZES[1];
+      const baseRadius = sizeObj ? sizeObj.radius : 26;
+
       ctx.save();
       ctx.strokeStyle = State.activeColorHex;
       ctx.fillStyle = State.activeColorHex;
-      ctx.lineWidth = State.activeColorName === '지우개' ? 48 : 28;
+      ctx.lineWidth = State.activeColorName === '지우개' ? Math.round(baseRadius * 1.55) : baseRadius;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
