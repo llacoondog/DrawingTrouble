@@ -22,7 +22,6 @@ window.BanBan.Network = (function () {
     onPauseForWaitingRoom: () => {},
     onOpenCustomizer: () => {},
     onSetMode: () => {},
-    onUpdateAiButtonUI: () => {},
     normalizeAnswer: (s) => s.replace(/\s+/g, '').toLowerCase()
   };
 
@@ -184,22 +183,11 @@ window.BanBan.Network = (function () {
       const me = State.playerRoster.find(p => p.id === State.myPeerId);
       if (!me) return;
 
-      const hasHumanP2 = State.playerRoster.some(p => p.role === 'P2' && p.id !== 'local-2');
-      if (hasHumanP2) {
-        State.aiHelperEnabled = false;
-        callbacks.onUpdateAiButtonUI();
-      } else if (me.role === 'P1') {
-        State.aiHelperEnabled = true;
-        callbacks.onUpdateAiButtonUI();
-      }
-
       const modePrefix = isSocketServerAvailable ? '서버방' : 'P2P방';
       if (me.role === 'P1') {
         callbacks.onSetMode('P1', 'mode-p1');
         if (p2pStatusText) p2pStatusText.textContent = `${modePrefix}: ${State.currentRoomCode} (🎨 1P 브러시)`;
       } else if (me.role === 'P2') {
-        State.aiHelperEnabled = false;
-        callbacks.onUpdateAiButtonUI();
         callbacks.onSetMode('P2', 'mode-p2');
         if (p2pStatusText) p2pStatusText.textContent = `${modePrefix}: ${State.currentRoomCode} (🕹️ 2P 팔레트)`;
       } else {
@@ -208,12 +196,8 @@ window.BanBan.Network = (function () {
       }
     } else {
       if (State.controlMode === 'P1') {
-        State.aiHelperEnabled = false;
-        callbacks.onUpdateAiButtonUI();
         callbacks.onSetMode('P2', 'mode-p2');
       } else if (State.controlMode === 'P2') {
-        State.aiHelperEnabled = true;
-        callbacks.onUpdateAiButtonUI();
         callbacks.onSetMode('P1', 'mode-p1');
       }
     }
@@ -637,11 +621,6 @@ window.BanBan.Network = (function () {
 
           const guestName = conn.metadata?.nickname || `친구${guestConnections.length}`;
           const guestCustom = conn.metadata?.custom || { color: '#06b6d4', hat: 'HELMET', face: 'NORMAL' };
-
-          if (assignedRole === 'P2') {
-            State.aiHelperEnabled = false;
-            callbacks.onUpdateAiButtonUI();
-          }
 
           State.playerRoster.push({
             id: conn.peer,

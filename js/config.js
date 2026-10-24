@@ -152,18 +152,6 @@ window.BanBan.Config = {
     hint: extractChosung(word)
   })),
 
-  // 봇 구경꾼 이름 및 추리 대사
-  BOT_NAMES: ['세훈', '지나언니', '길가는똥손', '화실스파이'],
-  BOT_FUNNY_GUESSES: [
-    '이거 완전 현대미술인데??',
-    '야 2P 빨리 다른 색깔 발판 밟아ㅋㅋㅋ',
-    '계란프라이 아님?',
-    '발판에서 발 떼면 펜 꺼진다구ㅋㅋ',
-    '외계인 고문하는 그림인가요',
-    '바나나?',
-    '정체불명의 생명체 탄생ㅋㅋ'
-  ],
-
   // 3단계 붓 굵기 설정 (가는붓 / 기본붓 / 왕붓)
   BRUSH_SIZES: [
     { id: 'THIN',   name: '가는붓', radius: 12, scale: 0.68, badge: '가는붓 (소)' },
@@ -189,7 +177,6 @@ window.BanBan.Config = {
 
 window.BanBan.State = {
   controlMode: 'BOTH', // 'BOTH' | 'P1' | 'P2' | 'SPECTATOR'
-  aiHelperEnabled: true,
   currentRound: 1,
   totalScore: 0,
   timeLeft: 60,
@@ -212,10 +199,7 @@ window.BanBan.State = {
   p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86 },
   p2State: { vx: 0, vz: 0, accel: 0.024, friction: 0.82 },
 
-  // 2P AI 및 펜/색상/굵기/사운드 상태
-  aiTargetX: 0.3,
-  aiColorIdx: 4,
-  aiTimer: 0,
+  // 펜/색상/굵기/사운드 상태
   isPenDown: false,
   wasOnClearPad: false,
   wasOnSizePad: false,
@@ -239,7 +223,7 @@ window.BanBan.State = {
     },
     {
       id: 'local-2',
-      nickname: '2P 도우미',
+      nickname: '2P 플레이어',
       role: 'P2',
       score: 0,
       custom: { color: '#06b6d4', hat: 'HELMET', face: 'NORMAL' }

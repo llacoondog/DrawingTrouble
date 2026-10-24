@@ -71,7 +71,7 @@
     <span id="pad-toast-sub" class="text-xs px-2.5 py-0.5 rounded-full bg-black/30 text-yellow-200">펜 ON</span>
   </div>
 
-  <!-- 좌측 상단 모드 & 2P AI 도우미 스위처 -->
+  <!-- 좌측 상단 조작 모드 스위처 -->
   <div id="mode-switcher" class="absolute top-[74px] left-3 z-10 flex flex-wrap gap-1.5 max-w-[calc(100vw-24px)] lg:max-w-[calc(100vw-360px)]">
     <button id="mode-both" class="mode-btn bg-pink-600 text-white border border-pink-400 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
       🎮 1P+2P 동시 조작
@@ -84,9 +84,6 @@
     </button>
     <button id="mode-spec" class="mode-btn bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition">
       👀 구경꾼 시점 (제시어 가리기)
-    </button>
-    <button id="btn-ai-p2" class="bg-emerald-500 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-xl text-xs font-extrabold shadow transition hover:brightness-110">
-      🤖 2P 자동 도우미: ON
     </button>
     <div id="p2p-status-badge" class="hidden items-center gap-1.5 bg-purple-950/90 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl text-xs font-bold shadow cursor-pointer" title="클릭하여 대기방 보기">
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
@@ -127,9 +124,6 @@
         <h3 class="text-xs sm:text-sm font-extrabold text-slate-200">💬 실시간 정답 채팅</h3>
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-[11px] text-slate-400 flex items-center gap-1 cursor-pointer">
-          <input type="checkbox" id="bot-toggle" checked class="accent-indigo-500 rounded"> 봇 채팅
-        </label>
         <span id="score-text" class="bg-amber-400 text-slate-900 font-extrabold text-xs px-2.5 py-0.5 rounded-full">0점</span>
       </div>
     </div>

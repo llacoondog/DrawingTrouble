@@ -277,7 +277,7 @@ window.onload = function () {
     entryScreenEl.classList.remove('hidden');
   }
 
-  // 4. 모드 스위처, 'YOU' 화살표 표시 & 2P 자동 도우미 제어
+  // 4. 모드 스위처 & 'YOU' 화살표 표시 제어
   function updatePromptVisibility() {
     const promptEl = document.getElementById('prompt-text');
     if (State.gameState === 'WAITING' || State.gameState === 'LOBBY') {
@@ -288,17 +288,6 @@ window.onload = function () {
       promptEl.textContent = `제시어: ${State.currentPrompt.word.replace(/[^\s]/g, '❓')}`;
     } else {
       promptEl.textContent = `제시어: ${State.currentPrompt.word}`;
-    }
-  }
-
-  function updateAiButtonUI() {
-    const aiBtn = document.getElementById('btn-ai-p2');
-    if (State.aiHelperEnabled) {
-      aiBtn.textContent = '🤖 2P 자동 도우미: ON';
-      aiBtn.className = 'bg-emerald-500 text-emerald-950 border border-emerald-300 px-3 py-1.5 rounded-xl text-xs font-extrabold shadow transition hover:brightness-110';
-    } else {
-      aiBtn.textContent = '🤖 2P 자동 도우미: OFF';
-      aiBtn.className = 'bg-slate-800/90 text-slate-300 border border-white/10 px-3 py-1.5 rounded-xl text-xs font-bold shadow transition hover:bg-slate-700';
     }
   }
 
@@ -319,17 +308,8 @@ window.onload = function () {
 
   document.getElementById('mode-both').addEventListener('click', () => setMode('BOTH', 'mode-both'));
   document.getElementById('mode-p1').addEventListener('click', () => setMode('P1', 'mode-p1'));
-  document.getElementById('mode-p2').addEventListener('click', () => {
-    State.aiHelperEnabled = false;
-    updateAiButtonUI();
-    setMode('P2', 'mode-p2');
-  });
+  document.getElementById('mode-p2').addEventListener('click', () => setMode('P2', 'mode-p2'));
   document.getElementById('mode-spec').addEventListener('click', () => setMode('SPECTATOR', 'mode-spec'));
-
-  document.getElementById('btn-ai-p2').addEventListener('click', () => {
-    State.aiHelperEnabled = !State.aiHelperEnabled;
-    updateAiButtonUI();
-  });
 
   // 5. 실시간 채팅 & 라운드 진행 제어
   chatInputEl.addEventListener('focus', () => { State.isTypingChat = true; clearAllKeys(); });
@@ -487,8 +467,6 @@ window.onload = function () {
     State.isPenDown = false;
     State.wasOnClearPad = false;
     State.wasOnSizePad = false;
-    State.aiColorIdx = 4;
-    State.aiTargetX = 0.3;
 
     // 내가 1P 권한이 있는지 확인 (로컬 모드에서는 항상 직접 선택 가능, 멀티에서는 1P만 선택)
     const me = State.playerRoster.find(p => p.id === State.myPeerId);
@@ -596,8 +574,6 @@ window.onload = function () {
     State.isPenDown = false;
     State.wasOnClearPad = false;
     State.wasOnSizePad = false;
-    State.aiColorIdx = 4;
-    State.aiTargetX = 0.3;
 
     const p1Player = State.playerRoster.find(p => p.role === 'P1');
     const p2Player = State.playerRoster.find(p => p.role === 'P2');
@@ -623,13 +599,6 @@ window.onload = function () {
         const hintText = State.currentPrompt.hint || Config.extractChosung(State.currentPrompt.word);
         addChatMessage('', `💡 [초성 힌트] ${hintText}`, 'hint');
         if (Sound) Sound.playHint();
-      }
-
-      const botToggle = document.getElementById('bot-toggle');
-      if (botToggle && botToggle.checked && State.timeLeft > 5 && State.timeLeft % 13 === 0) {
-        const botName = Config.BOT_NAMES[Math.floor(Math.random() * Config.BOT_NAMES.length)];
-        const botMsg = Config.BOT_FUNNY_GUESSES[Math.floor(Math.random() * Config.BOT_FUNNY_GUESSES.length)];
-        addChatMessage(botName, botMsg);
       }
 
       if (State.timeLeft <= 0) {
@@ -720,7 +689,6 @@ window.onload = function () {
     onPauseForWaitingRoom: pauseForWaitingRoom,
     onOpenCustomizer: openCustomizerModal,
     onSetMode: setMode,
-    onUpdateAiButtonUI: updateAiButtonUI,
     normalizeAnswer
   });
 
@@ -758,7 +726,6 @@ window.onload = function () {
 
   // 8. 메인 애니메이션 루프 (60FPS 기준 deltaTime 정규화)
   const clock = new THREE.Clock();
-  const colorPadXList = [-6.9, -5.1, -3.3, -1.5, 0.3];
 
   function animate() {
     requestAnimationFrame(animate);
@@ -816,16 +783,7 @@ window.onload = function () {
       }
 
       // --- 2P 팔레트 엔지니어 이동 ---
-      const manualP2Pressed = keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight'];
-      if (manualP2Pressed && State.aiHelperEnabled) {
-        State.aiHelperEnabled = false;
-        updateAiButtonUI();
-      }
-
-      const prevP2X = p2Obj.group.position.x;
-      const prevP2Z = p2Obj.group.position.z;
-
-      if ((State.controlMode === 'BOTH' || State.controlMode === 'P2') && !State.aiHelperEnabled) {
+      if (State.controlMode === 'BOTH' || State.controlMode === 'P2') {
         let ix2 = 0;
         let iz2 = 0;
         if (keys['ArrowUp'])    iz2 -= 1;
@@ -844,19 +802,6 @@ window.onload = function () {
         p2State.vz *= f2;
         p2Obj.group.position.x += p2State.vx * dtScale;
         p2Obj.group.position.z += p2State.vz * dtScale;
-      } else if (State.aiHelperEnabled && (!State.isP2PConnected || State.isP2PHost)) {
-        State.aiTimer += dtScale;
-        if (State.aiTimer >= 260) {
-          State.aiTimer = 0;
-          State.aiColorIdx = (State.aiColorIdx + 1) % colorPadXList.length;
-          State.aiTargetX = colorPadXList[State.aiColorIdx];
-        }
-        const aiLerpX = 1 - Math.pow(0.92, dtScale);
-        const aiLerpZ = 1 - Math.pow(0.90, dtScale);
-        p2Obj.group.position.x += (State.aiTargetX - p2Obj.group.position.x) * aiLerpX;
-        p2Obj.group.position.z += (-6.8 - p2Obj.group.position.z) * aiLerpZ;
-        p2State.vx = (p2Obj.group.position.x - prevP2X) / Math.max(dtScale, 0.01);
-        p2State.vz = (p2Obj.group.position.z - prevP2Z) / Math.max(dtScale, 0.01);
       }
 
       p2Obj.group.position.x = Math.max(-7.8, Math.min(8.2, p2Obj.group.position.x));
@@ -925,7 +870,7 @@ window.onload = function () {
         padItem.wasStepped = isStepped;
       });
 
-      const isControllingP2 = State.controlMode === 'BOTH' || State.controlMode === 'P2' || (State.aiHelperEnabled && (!State.isP2PConnected || State.isP2PHost));
+      const isControllingP2 = State.controlMode === 'BOTH' || State.controlMode === 'P2';
       if (isControllingP2) {
         const prevPenDown = State.isPenDown;
         const prevColorHex = State.activeColorHex;
