@@ -1,5 +1,5 @@
 // ==========================================
-// 반반 무마니 3D - 대기방(Waiting Room) & 하이브리드 멀티플레이 네트워크 (network.js)
+// 반반 무마니 3D - 대기방(Waiting Room), 커스텀 동기화 & 하이브리드 네트워크 (network.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -19,29 +19,41 @@ window.BanBan.Network = (function () {
     onEndRound: () => {},
     onStartRound: () => {},
     onPauseForWaitingRoom: () => {},
+    onOpenCustomizer: () => {},
     onSetMode: () => {},
     onUpdateAiButtonUI: () => {},
     normalizeAnswer: (s) => s.replace(/\s+/g, '').toLowerCase()
   };
 
+  function getHatIcon(hatId) {
+    const found = Config.CUSTOM_HATS.find(h => h.id === hatId);
+    return found ? found.icon : '🎨';
+  }
+
   function renderPlayerRoster() {
+    // 3D 캐릭터(1P, 2P)에 로스터의 커스터마이징 외형 동기화
+    Scene3D.syncRosterCustomizations();
+
     // 1) 우측 사이드바 플레이어 칩 렌더링
     const listEl = document.getElementById('player-list');
     if (listEl) {
       listEl.innerHTML = '';
       State.playerRoster.forEach(p => {
         const span = document.createElement('span');
-        const isMe = State.isP2PConnected && p.id === State.myPeerId;
+        const isMe = (!State.isP2PConnected && p.id === 'local-1') || (State.isP2PConnected && p.id === State.myPeerId);
         const meTag = isMe ? ' (나)' : '';
+        const hatEmoji = getHatIcon(p.custom?.hat);
+        const dotColor = p.custom?.color || '#ec4899';
+
         if (p.role === 'P1') {
-          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold';
-          span.textContent = `🎨 1P ${p.nickname}${meTag} (${p.score}점)`;
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold flex items-center gap-1';
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 1P ${p.nickname}${meTag} (${p.score}점)</span>`;
         } else if (p.role === 'P2') {
-          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold';
-          span.textContent = `🕹️ 2P ${p.nickname}${meTag} (${p.score}점)`;
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold flex items-center gap-1';
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} 2P ${p.nickname}${meTag} (${p.score}점)</span>`;
         } else {
-          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold';
-          span.textContent = `👀 ${p.nickname}${meTag} (${p.score}점)`;
+          span.className = 'text-[11px] px-2.5 py-1 rounded-lg bg-slate-700/60 border border-white/10 text-slate-300 font-semibold flex items-center gap-1';
+          span.innerHTML = `<span class="w-2.5 h-2.5 rounded-full inline-block border border-white/60" style="background:${dotColor}"></span><span>${hatEmoji} ${p.nickname}${meTag} (${p.score}점)</span>`;
         }
         listEl.appendChild(span);
       });
@@ -69,9 +81,14 @@ window.BanBan.Network = (function () {
 
         const hostCrown = idx === 0 ? '👑 ' : '';
         const meBadge = isMe ? ' <span class="text-amber-300 font-extrabold">(나)</span>' : '';
+        const hatEmoji = getHatIcon(p.custom?.hat);
+        const dotColor = p.custom?.color || '#ec4899';
 
         row.innerHTML = `
-          <div class="text-xs font-bold text-white">${hostCrown}${p.nickname}${meBadge}</div>
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full inline-block border border-white" style="background:${dotColor}"></span>
+            <span>${hatEmoji} ${hostCrown}${p.nickname}${meBadge}</span>
+          </div>
           <div>${roleBadge}</div>
         `;
         waitingListEl.appendChild(row);
@@ -107,6 +124,27 @@ window.BanBan.Network = (function () {
     }
   }
 
+  // 내 커스터마이징/닉네임 변경 시 로컬 로스터 및 멀티플레이 방에 즉시 동기화
+  function broadcastMyCustomization() {
+    const myEntry = State.playerRoster.find(p =>
+      State.isP2PConnected ? p.id === State.myPeerId : p.id === 'local-1'
+    );
+    if (myEntry) {
+      myEntry.nickname = State.myNickname;
+      myEntry.custom = { ...State.myCustom };
+    }
+    renderPlayerRoster();
+
+    if (State.isP2PConnected) {
+      sendNetworkPacket({
+        type: 'CUSTOM_UPDATE',
+        peerId: State.myPeerId,
+        nickname: State.myNickname,
+        custom: { ...State.myCustom }
+      });
+    }
+  }
+
   // 라운드마다 또는 대기방에서 플레이어 역할(P1 -> P2 -> SPECTATOR) 순환 로테이션
   function rotatePlayerRoles() {
     const roster = State.playerRoster;
@@ -127,7 +165,6 @@ window.BanBan.Network = (function () {
     renderPlayerRoster();
   }
 
-  // 로스터 기준으로 내 조작 모드(P1 / P2 / SPECTATOR) 및 상태 배지 자동 적용
   function applyMyRoleFromRoster() {
     const p2pStatusText = document.getElementById('p2p-status-text');
 
@@ -209,6 +246,9 @@ window.BanBan.Network = (function () {
   }
 
   function openMultiModal() {
+    const mpNickInput = document.getElementById('mp-nickname');
+    if (mpNickInput) mpNickInput.value = State.myNickname;
+
     const multiModal = document.getElementById('multi-modal');
     if (multiModal) {
       multiModal.classList.remove('hidden');
@@ -243,6 +283,13 @@ window.BanBan.Network = (function () {
       State.isPenDown = Boolean(data.isPenDown);
       if (data.activeColorHex !== undefined) State.activeColorHex = data.activeColorHex;
       if (data.activeColorName !== undefined) State.activeColorName = data.activeColorName;
+    } else if (data.type === 'CUSTOM_UPDATE' && data.peerId && data.custom) {
+      const target = State.playerRoster.find(p => p.id === data.peerId);
+      if (target) {
+        target.custom = data.custom;
+        if (data.nickname) target.nickname = data.nickname;
+        renderPlayerRoster();
+      }
     } else if (data.type === 'START_GAME') {
       State.currentRound = data.round || 1;
       if (typeof data.promptIndex === 'number') {
@@ -254,6 +301,8 @@ window.BanBan.Network = (function () {
       applyMyRoleFromRoster();
       renderPlayerRoster();
       closeMultiModal();
+      const entryScreen = document.getElementById('entry-screen');
+      if (entryScreen) entryScreen.classList.add('hidden');
       callbacks.onAddChatMessage('', `🚀 방장이 게임을 시작했습니다! ROUND ${State.currentRound} 출발!`, 'system');
       callbacks.onStartRound(true);
     } else if (data.type === 'CHAT') {
@@ -366,6 +415,7 @@ window.BanBan.Network = (function () {
     socketIoClient.emit('JOIN_ROOM', {
       roomCode: State.currentRoomCode,
       nickname: State.myNickname,
+      custom: { ...State.myCustom },
       isHostIntent
     });
   }
@@ -417,7 +467,7 @@ window.BanBan.Network = (function () {
       showMpFeedback(`🔗 초대 링크가 복사되었습니다! 카톡이나 디스코드에 붙여넣어 친구를 초대하세요.`);
     }
 
-    // URL 쿼리 파라미터(?room=PARTY7) 감지 시 자동으로 대기방 모달 오픈
+    // URL 쿼리 파라미터(?room=PARTY7) 감지 시 방 코드 자동 세팅
     const urlParams = new URLSearchParams(window.location.search);
     const invitedRoom = urlParams.get('room');
     if (invitedRoom) {
@@ -425,13 +475,27 @@ window.BanBan.Network = (function () {
       const roomInput = document.getElementById('mp-roomcode');
       if (roomInput) roomInput.value = cleanInvited;
       State.currentRoomCode = cleanInvited;
-      openMultiModal();
-      showMpFeedback(`💌 초대 링크로 접속하셨습니다! 닉네임을 입력하고 [🚀 친구 대기방 입장]을 눌러주세요.`);
     }
 
     document.getElementById('btn-open-multi').addEventListener('click', openMultiModal);
     p2pBadge.addEventListener('click', openMultiModal);
     document.getElementById('btn-close-multi').addEventListener('click', closeMultiModal);
+
+    // 멀티 모달 안에서 [👕 캐릭터 변경 / 꾸미기] 클릭 시 대기화면 커스터마이저 오픈
+    const btnMpBackCustom = document.getElementById('btn-mp-back-custom');
+    if (btnMpBackCustom) {
+      btnMpBackCustom.addEventListener('click', () => {
+        closeMultiModal();
+        callbacks.onOpenCustomizer();
+      });
+    }
+    const btnWaitingCustom = document.getElementById('btn-waiting-custom');
+    if (btnWaitingCustom) {
+      btnWaitingCustom.addEventListener('click', () => {
+        closeMultiModal();
+        callbacks.onOpenCustomizer();
+      });
+    }
 
     document.getElementById('btn-copy-code').addEventListener('click', copyRoomCode);
     document.getElementById('btn-waiting-copy-code').addEventListener('click', copyRoomCode);
@@ -474,8 +538,9 @@ window.BanBan.Network = (function () {
 
     // [대기방 만들기 - 방장]
     document.getElementById('btn-host-room').addEventListener('click', () => {
-      State.myNickname = (document.getElementById('mp-nickname').value || '방장화가').trim();
+      State.myNickname = (document.getElementById('mp-nickname').value || State.myNickname || '방장화가').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
+      Config.saveProfile(State.myNickname, State.myCustom);
 
       if (isSocketServerAvailable && typeof window.io === 'function') {
         connectViaSocketServer(true, showMpFeedback, p2pBadge);
@@ -497,7 +562,13 @@ window.BanBan.Network = (function () {
         State.isP2PConnected = true;
         State.isP2PHost = true;
 
-        State.playerRoster = [{ id: State.myPeerId, nickname: State.myNickname, role: 'P1', score: 0 }];
+        State.playerRoster = [{
+          id: State.myPeerId,
+          nickname: State.myNickname,
+          role: 'P1',
+          score: 0,
+          custom: { ...State.myCustom }
+        }];
         applyMyRoleFromRoster();
         renderPlayerRoster();
 
@@ -520,13 +591,20 @@ window.BanBan.Network = (function () {
           else if (!hasP2) assignedRole = 'P2';
 
           const guestName = conn.metadata?.nickname || `친구${guestConnections.length}`;
+          const guestCustom = conn.metadata?.custom || { color: '#06b6d4', hat: 'HELMET', face: 'NORMAL' };
 
           if (assignedRole === 'P2') {
             State.aiHelperEnabled = false;
             callbacks.onUpdateAiButtonUI();
           }
 
-          State.playerRoster.push({ id: conn.peer, nickname: guestName, role: assignedRole, score: 0 });
+          State.playerRoster.push({
+            id: conn.peer,
+            nickname: guestName,
+            role: assignedRole,
+            score: 0,
+            custom: guestCustom
+          });
           renderPlayerRoster();
 
           const { drawCanvas } = Scene3D.getSceneObjects();
@@ -563,8 +641,9 @@ window.BanBan.Network = (function () {
 
     // [친구 대기방 입장하기 - 2P 또는 구경꾼]
     document.getElementById('btn-join-room').addEventListener('click', () => {
-      State.myNickname = (document.getElementById('mp-nickname').value || '팔레트장인').trim();
+      State.myNickname = (document.getElementById('mp-nickname').value || State.myNickname || '팔레트장인').trim();
       State.currentRoomCode = (document.getElementById('mp-roomcode').value || 'PARTY7').trim().toUpperCase();
+      Config.saveProfile(State.myNickname, State.myCustom);
 
       if (isSocketServerAvailable && typeof window.io === 'function') {
         connectViaSocketServer(false, showMpFeedback, p2pBadge);
@@ -583,7 +662,12 @@ window.BanBan.Network = (function () {
       peer = new Peer();
       peer.on('open', (id) => {
         State.myPeerId = id;
-        const conn = peer.connect(targetHostId, { metadata: { nickname: State.myNickname } });
+        const conn = peer.connect(targetHostId, {
+          metadata: {
+            nickname: State.myNickname,
+            custom: { ...State.myCustom }
+          }
+        });
         hostConnection = conn;
 
         conn.on('open', () => {
@@ -643,6 +727,8 @@ window.BanBan.Network = (function () {
     sendNetworkPacket,
     renderPlayerRoster,
     rotatePlayerRoles,
-    applyMyRoleFromRoster
+    applyMyRoleFromRoster,
+    broadcastMyCustomization,
+    openMultiModal
   };
 })();

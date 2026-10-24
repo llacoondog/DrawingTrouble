@@ -1,5 +1,5 @@
 // ==========================================
-// 반반 무마니 3D - 설정 상수 및 전역 게임 상태 (config.js)
+// 반반 무마니 3D - 설정 상수, 커스터마이징 프리셋 및 전역 게임 상태 (config.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -49,6 +49,70 @@ const RAW_WORDS = [
   '목욕탕 간 악어'
 ];
 
+// 캐릭터 커스터마이징 프리셋 정의
+const CUSTOM_COLORS = [
+  { id: 'pink',   name: '체리 핑크',   hex: '#ec4899', num: 0xec4899 },
+  { id: 'cyan',   name: '소다 시안',   hex: '#06b6d4', num: 0x06b6d4 },
+  { id: 'violet', name: '포도 퍼플',   hex: '#8b5cf6', num: 0x8b5cf6 },
+  { id: 'mint',   name: '민트 그린',   hex: '#10b981', num: 0x10b981 },
+  { id: 'amber',  name: '망고 옐로',   hex: '#f59e0b', num: 0xf59e0b },
+  { id: 'coral',  name: '코랄 레드',   hex: '#ef4444', num: 0xef4444 },
+  { id: 'blue',   name: '오션 블루',   hex: '#3b82f6', num: 0x3b82f6 },
+  { id: 'lime',   name: '애플 라임',   hex: '#84cc16', num: 0x84cc16 }
+];
+
+const CUSTOM_HATS = [
+  { id: 'BERET',     name: '화가 베레모', icon: '🎨' },
+  { id: 'HELMET',    name: '안전모 전구', icon: '⛑️' },
+  { id: 'CROWN',     name: '황금 왕관',   icon: '👑' },
+  { id: 'CAT_EARS',  name: '고양이 귀',   icon: '🐱' },
+  { id: 'HALO',      name: '천사 헤일로', icon: '😇' },
+  { id: 'PROPELLER', name: '프로펠러 캡', icon: '🚁' },
+  { id: 'NONE',      name: '모자 없음',   icon: '✨' }
+];
+
+const CUSTOM_FACES = [
+  { id: 'NORMAL', name: '초롱초롱', icon: '👀' },
+  { id: 'COOL',   name: '선글라스', icon: '😎' },
+  { id: 'HAPPY',  name: '눈웃음',   icon: '😊' },
+  { id: 'STAR',   name: '반짝별눈', icon: '🤩' }
+];
+
+// 로컬 스토리지에 저장된 커스터마이징 불러오기
+function loadSavedProfile() {
+  const defaults = {
+    nickname: '열정화가',
+    custom: {
+      color: '#ec4899',
+      hat: 'BERET',
+      face: 'NORMAL'
+    }
+  };
+  try {
+    const raw = localStorage.getItem('banban_profile_v1');
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return {
+      nickname: (parsed.nickname || defaults.nickname).slice(0, 10),
+      custom: {
+        color: parsed.custom?.color || defaults.custom.color,
+        hat: parsed.custom?.hat || defaults.custom.hat,
+        face: parsed.custom?.face || defaults.custom.face
+      }
+    };
+  } catch (e) {
+    return defaults;
+  }
+}
+
+function saveProfile(nickname, custom) {
+  try {
+    localStorage.setItem('banban_profile_v1', JSON.stringify({ nickname, custom }));
+  } catch (e) {}
+}
+
+const initialProfile = loadSavedProfile();
+
 window.BanBan.Config = {
   PEER_PREFIX: 'banban3d-room-',
   CANVAS_SIZE: 12,
@@ -56,6 +120,10 @@ window.BanBan.Config = {
   COOP_BONUS_SCORE: 80,
 
   extractChosung,
+  saveProfile,
+  CUSTOM_COLORS,
+  CUSTOM_HATS,
+  CUSTOM_FACES,
 
   // 제시어 단어장 (초성 자동 생성)
   WORD_POOL: RAW_WORDS.map(word => ({
@@ -76,15 +144,13 @@ window.BanBan.Config = {
   ],
 
   // 2P 컨트롤 데크 발판 정의
-  // - 별도 ON/OFF 스위치 없이 색상 발판을 밟고 있는 동안만 펜 ON!
-  // - 우측 멀리 떨어진 곳(x: 7.0)에 2P 전용 [도화지 전체 지우기] 발판 배치
   PADS_DATA: [
-    { id: 'RED',       label: '빨강',         x: -6.5, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color' },
-    { id: 'YELLOW',    label: '노랑',         x: -4.6, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color' },
-    { id: 'GREEN',     label: '초록',         x: -2.7, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color' },
-    { id: 'BLUE',      label: '파랑',         x: -0.8, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color' },
-    { id: 'BLACK',     label: '검정',         x:  1.1, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color' },
-    { id: 'ERASER',    label: '지우개',       x:  3.0, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color' },
+    { id: 'RED',       label: '빨강',           x: -6.5, z: -6.8, color: 0xef4444, hex: '#ef4444', type: 'color' },
+    { id: 'YELLOW',    label: '노랑',           x: -4.6, z: -6.8, color: 0xf59e0b, hex: '#f59e0b', type: 'color' },
+    { id: 'GREEN',     label: '초록',           x: -2.7, z: -6.8, color: 0x10b981, hex: '#10b981', type: 'color' },
+    { id: 'BLUE',      label: '파랑',           x: -0.8, z: -6.8, color: 0x3b82f6, hex: '#3b82f6', type: 'color' },
+    { id: 'BLACK',     label: '검정',           x:  1.1, z: -6.8, color: 0x1f2937, hex: '#111827', type: 'color' },
+    { id: 'ERASER',    label: '지우개',         x:  3.0, z: -6.8, color: 0xf3f4f6, hex: '#ffffff', type: 'color' },
     { id: 'CLEAR_ALL', label: '💥도화지 지우기', x:  7.0, z: -6.8, color: 0xe11d48, hex: null,      type: 'clear' }
   ],
 
@@ -100,16 +166,25 @@ window.BanBan.State = {
   timeLeft: 60,
   currentPromptIndex: 0,
   currentPrompt: window.BanBan.Config.WORD_POOL[0],
-  gameState: 'PLAYING', // 'WAITING' | 'PLAYING' | 'ROUND_END'
+  gameState: 'LOBBY', // 'LOBBY' (접속 대기화면) | 'WAITING' (멀티 대기방) | 'PLAYING' | 'ROUND_END'
   isTypingChat: false,
+
+  // 내 캐릭터 커스터마이징 상태
+  myNickname: initialProfile.nickname,
+  myCustom: { ...initialProfile.custom },
+  p2DefaultCustom: {
+    color: '#06b6d4',
+    hat: 'HELMET',
+    face: 'NORMAL'
+  },
 
   // 1P / 2P 물리 상태 (60FPS 기준 deltaTime 정규화 속도)
   p1State: { vx: 0, vz: 0, prevX: null, prevZ: null, accel: 0.020, friction: 0.86 },
   p2State: { vx: 0, vz: 0, accel: 0.024, friction: 0.82 },
 
   // 2P AI 및 펜/색상 상태
-  aiTargetX: 1.1, // 기본 검정색 발판 위치
-  aiColorIdx: 4,  // 검정색 발판부터 시작
+  aiTargetX: 1.1,
+  aiColorIdx: 4,
   aiTimer: 0,
   isPenDown: false,
   wasOnClearPad: false,
@@ -120,10 +195,21 @@ window.BanBan.State = {
   myPeerId: 'local-1',
   isP2PConnected: false,
   isP2PHost: false,
-  myNickname: '열정화가',
   currentRoomCode: 'PARTY7',
   playerRoster: [
-    { id: 'local-1', nickname: '1P 브러시', role: 'P1', score: 0 },
-    { id: 'local-2', nickname: '2P 도우미', role: 'P2', score: 0 }
+    {
+      id: 'local-1',
+      nickname: initialProfile.nickname,
+      role: 'P1',
+      score: 0,
+      custom: { ...initialProfile.custom }
+    },
+    {
+      id: 'local-2',
+      nickname: '2P 도우미',
+      role: 'P2',
+      score: 0,
+      custom: { color: '#06b6d4', hat: 'HELMET', face: 'NORMAL' }
+    }
   ]
 };

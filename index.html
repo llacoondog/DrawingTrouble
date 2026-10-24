@@ -39,6 +39,10 @@
         <div id="color-preview" class="w-3.5 h-3.5 rounded-full border-2 border-white" style="background: transparent;"></div>
         <span id="color-name" class="text-slate-200">발판 대기</span>
       </div>
+      <!-- 캐릭터 꾸미기 대기화면 열기 버튼 -->
+      <button id="btn-open-custom" class="bg-pink-600 hover:bg-pink-500 active:scale-95 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition shadow border border-pink-400/50 flex items-center gap-1">
+        <span>👕 캐릭터 꾸미기</span>
+      </button>
       <!-- 멀티플레이 대기방 열기 버튼 -->
       <button id="btn-open-multi" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-lg border border-purple-400/50 flex items-center gap-1.5">
         <span>🌐 멀티플레이 대기방</span>
@@ -110,10 +114,7 @@
     </div>
 
     <!-- 접속 플레이어 역할 칩 목록 -->
-    <div id="player-list" class="px-3 py-2 bg-black/25 border-b border-white/5 flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-      <span class="text-[11px] px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-500/40 text-pink-200 font-bold">🎨 1P 로컬화가</span>
-      <span class="text-[11px] px-2.5 py-1 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 font-bold">🤖 2P AI도우미</span>
-    </div>
+    <div id="player-list" class="px-3 py-2 bg-black/25 border-b border-white/5 flex flex-wrap gap-1.5 max-h-20 overflow-y-auto"></div>
 
     <!-- 채팅 메시지 리스트 -->
     <div id="chat-messages" class="flex-1 p-3 overflow-y-auto flex flex-col gap-2 text-xs sm:text-[13px]"></div>
@@ -130,6 +131,79 @@
       <button id="btn-send" class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm transition shadow">
         전송
       </button>
+    </div>
+  </div>
+
+  <!-- ✨ 최초 접속 대기화면 & 3D 캐릭터 커스터마이징 로비 모달 -->
+  <div id="entry-screen" class="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-5 overflow-y-auto">
+    <div class="modal-pop bg-[#181c28] border border-white/15 rounded-3xl p-5 sm:p-7 max-w-2xl w-full shadow-2xl relative my-auto">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-white/10">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="bg-gradient-to-r from-pink-500 to-indigo-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full">WELCOME LOBBY</span>
+            <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight">🎨 반반 무마니 3D 대기실</h1>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">내 3D 젤리빈 캐릭터를 꾸미고 혼자 연습하거나 친구들과 멀티 대기방에서 만나보세요!</p>
+        </div>
+        <button id="btn-random-custom" class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-amber-300 text-xs font-extrabold px-3 py-2 rounded-xl border border-white/10 transition">
+          🎲 랜덤 꾸미기
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+        <!-- 좌측: 3D 캐릭터 실시간 회전 프리뷰 & 닉네임 -->
+        <div class="md:col-span-5 flex flex-col items-center bg-[#12141c] border border-white/10 rounded-2xl p-4">
+          <div class="relative rounded-2xl overflow-hidden border border-white/10 shadow-inner bg-[#141824] mb-3">
+            <canvas id="custom-preview-canvas" width="220" height="220" class="w-[200px] h-[200px] sm:w-[220px] sm:h-[220px] block"></canvas>
+            <span class="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-[10px] text-slate-300 font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+              3D 실시간 미리보기
+            </span>
+          </div>
+
+          <div class="w-full">
+            <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
+            <input
+              id="entry-nickname"
+              type="text"
+              maxlength="10"
+              placeholder="예: 열정화가"
+              value="열정화가"
+              class="w-full bg-[#1b1f2d] border border-white/15 focus:border-pink-500 rounded-xl px-3.5 py-2 text-sm font-bold text-white text-center outline-none transition"
+            />
+          </div>
+        </div>
+
+        <!-- 우측: 색상 / 모자 / 표정 선택 패널 -->
+        <div class="md:col-span-7 space-y-4">
+          <!-- 1) 바디 컬러 선택 -->
+          <div>
+            <label class="block text-xs font-extrabold text-slate-300 mb-2">🎨 1. 젤리 바디 컬러</label>
+            <div id="custom-color-options" class="grid grid-cols-4 sm:grid-cols-8 gap-2"></div>
+          </div>
+
+          <!-- 2) 모자 / 머리 장식 선택 -->
+          <div>
+            <label class="block text-xs font-extrabold text-slate-300 mb-2">👒 2. 모자 & 머리 장식</label>
+            <div id="custom-hat-options" class="grid grid-cols-2 sm:grid-cols-3 gap-1.5"></div>
+          </div>
+
+          <!-- 3) 얼굴 / 눈 스타일 선택 -->
+          <div>
+            <label class="block text-xs font-extrabold text-slate-300 mb-2">😎 3. 눈 & 표정 스타일</label>
+            <div id="custom-face-options" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 하단 시작 액션 버튼 -->
+      <div class="mt-6 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button id="btn-entry-solo" class="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black py-3.5 px-4 rounded-2xl text-sm shadow-lg transition flex items-center justify-center gap-2">
+          <span>🎮 혼자 / 로컬 연습 시작하기</span>
+        </button>
+        <button id="btn-entry-multi" class="bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-black py-3.5 px-4 rounded-2xl text-sm shadow-lg border border-purple-400/40 transition flex items-center justify-center gap-2">
+          <span>🌐 멀티플레이 대기방 만들기 / 입장</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -159,7 +233,7 @@
         <h2 class="text-xl font-black text-white">멀티플레이 대기방</h2>
       </div>
       <p id="mp-mode-desc" class="text-xs text-slate-400 mb-4 leading-relaxed">
-        방을 만들거나 입장하면 <b>대기방</b>에서 참가자와 역할(1P/2P/구경꾼)을 확인한 뒤 방장이 게임을 시작합니다!
+        방을 만들거나 입장하면 <b>대기방</b>에서 참가자와 커스텀 캐릭터·역할(1P/2P/구경꾼)을 확인한 뒤 방장이 게임을 시작합니다!
       </p>
 
       <!-- [1단계] 방 생성 / 입장 입력 뷰 -->
@@ -167,7 +241,12 @@
         <div class="space-y-3 mb-4">
           <div>
             <label class="block text-xs font-bold text-slate-300 mb-1">내 닉네임</label>
-            <input id="mp-nickname" type="text" maxlength="10" placeholder="예: 피카소지우" value="열정화가" class="w-full bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none" />
+            <div class="flex gap-2">
+              <input id="mp-nickname" type="text" maxlength="10" placeholder="예: 피카소지우" value="열정화가" class="flex-1 bg-[#12141c] border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none" />
+              <button id="btn-mp-back-custom" class="bg-pink-600/30 hover:bg-pink-600/50 border border-pink-400/40 text-pink-200 text-xs font-bold px-3 rounded-xl transition whitespace-nowrap">
+                👕 캐릭터 변경
+              </button>
+            </div>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-300 mb-1">방 코드 (영문/숫자 4~8자리)</label>
@@ -198,8 +277,9 @@
               <span id="waiting-room-code" class="text-lg font-black text-amber-300 tracking-wider">PARTY7</span>
             </div>
             <div class="flex gap-1.5">
-              <button id="btn-waiting-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition">📋 코드 복사</button>
-              <button id="btn-waiting-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition">🔗 초대 링크</button>
+              <button id="btn-waiting-custom" class="bg-pink-600/30 hover:bg-pink-600/50 border border-pink-400/40 text-pink-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition">👕 꾸미기</button>
+              <button id="btn-waiting-copy-code" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition">📋 코드</button>
+              <button id="btn-waiting-copy-link" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition">🔗 링크</button>
             </div>
           </div>
 

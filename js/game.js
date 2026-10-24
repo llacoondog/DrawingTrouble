@@ -1,12 +1,12 @@
 // ==========================================
-// 반반 무마니 3D - 메인 게임 루프, 대기방 연동, 2P 발판/지우기 권한 & 속도 동기화 (game.js)
+// 반반 무마니 3D - 접속 대기화면(커스터마이징), 게임 루프 & 물리 제어 (game.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
 window.onload = function () {
   const { Config, State, Scene3D, Network } = window.BanBan;
 
-  // 1. 3D 씬 초기화
+  // 1. 3D 씬 및 프리뷰 캔버스 초기화
   const container = document.getElementById('canvas-container');
   Scene3D.initScene(container);
   const { camera, renderer, drawCanvas, drawingBoard, p1Obj, p2Obj, padMeshes } = Scene3D.getSceneObjects();
@@ -18,12 +18,176 @@ window.onload = function () {
   const uiPenStatus = document.getElementById('pen-status');
   const uiColorPreview = document.getElementById('color-preview');
   const uiColorName = document.getElementById('color-name');
+  const entryScreenEl = document.getElementById('entry-screen');
+  const entryNicknameEl = document.getElementById('entry-nickname');
 
-  // 3. 모드 스위처, 'YOU' 화살표 표시 & 2P 자동 도우미 제어
+  // 3. 접속 대기화면 & 캐릭터 커스터마이징 UI 초기화
+  function initCustomizerUI() {
+    if (entryNicknameEl) {
+      entryNicknameEl.value = State.myNickname;
+      entryNicknameEl.addEventListener('focus', () => { State.isTypingChat = true; });
+      entryNicknameEl.addEventListener('blur', () => { State.isTypingChat = false; });
+      entryNicknameEl.addEventListener('input', () => {
+        State.myNickname = (entryNicknameEl.value || '열정화가').trim().slice(0, 10);
+        const mpNick = document.getElementById('mp-nickname');
+        if (mpNick) mpNick.value = State.myNickname;
+        Config.saveProfile(State.myNickname, State.myCustom);
+        Network.broadcastMyCustomization();
+      });
+    }
+
+    const colorContainer = document.getElementById('custom-color-options');
+    const hatContainer = document.getElementById('custom-hat-options');
+    const faceContainer = document.getElementById('custom-face-options');
+
+    function renderCustomButtons() {
+      // 1) 색상 버튼
+      if (colorContainer) {
+        colorContainer.innerHTML = '';
+        Config.CUSTOM_COLORS.forEach(c => {
+          const isSelected = State.myCustom.color.toLowerCase() === c.hex.toLowerCase();
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.title = c.name;
+          btn.className = `h-9 rounded-xl border-2 transition flex items-center justify-center ${
+            isSelected ? 'border-white scale-105 shadow-lg ring-2 ring-pink-400' : 'border-white/20 opacity-80 hover:opacity-100'
+          }`;
+          btn.style.backgroundColor = c.hex;
+          btn.innerHTML = isSelected ? '<span class="text-white text-xs font-black drop-shadow">✓</span>' : '';
+          btn.addEventListener('click', () => {
+            State.myCustom.color = c.hex;
+            Config.saveProfile(State.myNickname, State.myCustom);
+            renderCustomButtons();
+            Network.broadcastMyCustomization();
+          });
+          colorContainer.appendChild(btn);
+        });
+      }
+
+      // 2) 모자 버튼
+      if (hatContainer) {
+        hatContainer.innerHTML = '';
+        Config.CUSTOM_HATS.forEach(h => {
+          const isSelected = State.myCustom.hat === h.id;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+            isSelected
+              ? 'bg-pink-600 text-white border-pink-400 shadow-md'
+              : 'bg-[#12141c] hover:bg-slate-800 text-slate-300 border-white/10'
+          }`;
+          btn.innerHTML = `<span>${h.icon}</span><span>${h.name}</span>`;
+          btn.addEventListener('click', () => {
+            State.myCustom.hat = h.id;
+            Config.saveProfile(State.myNickname, State.myCustom);
+            renderCustomButtons();
+            Network.broadcastMyCustomization();
+          });
+          hatContainer.appendChild(btn);
+        });
+      }
+
+      // 3) 얼굴 표정 버튼
+      if (faceContainer) {
+        faceContainer.innerHTML = '';
+        Config.CUSTOM_FACES.forEach(f => {
+          const isSelected = State.myCustom.face === f.id;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `px-2.5 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+            isSelected
+              ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+              : 'bg-[#12141c] hover:bg-slate-800 text-slate-300 border-white/10'
+          }`;
+          btn.innerHTML = `<span>${f.icon}</span><span>${f.name}</span>`;
+          btn.addEventListener('click', () => {
+            State.myCustom.face = f.id;
+            Config.saveProfile(State.myNickname, State.myCustom);
+            renderCustomButtons();
+            Network.broadcastMyCustomization();
+          });
+          faceContainer.appendChild(btn);
+        });
+      }
+    }
+
+    // [🎲 랜덤 꾸미기] 버튼
+    const btnRandom = document.getElementById('btn-random-custom');
+    if (btnRandom) {
+      btnRandom.addEventListener('click', () => {
+        const randColor = Config.CUSTOM_COLORS[Math.floor(Math.random() * Config.CUSTOM_COLORS.length)];
+        const randHat = Config.CUSTOM_HATS[Math.floor(Math.random() * Config.CUSTOM_HATS.length)];
+        const randFace = Config.CUSTOM_FACES[Math.floor(Math.random() * Config.CUSTOM_FACES.length)];
+        State.myCustom = {
+          color: randColor.hex,
+          hat: randHat.id,
+          face: randFace.id
+        };
+        Config.saveProfile(State.myNickname, State.myCustom);
+        renderCustomButtons();
+        Network.broadcastMyCustomization();
+      });
+    }
+
+    // [🎮 혼자 / 로컬 연습 시작하기] 버튼
+    const btnSolo = document.getElementById('btn-entry-solo');
+    if (btnSolo) {
+      btnSolo.addEventListener('click', () => {
+        if (entryNicknameEl && entryNicknameEl.value.trim()) {
+          State.myNickname = entryNicknameEl.value.trim().slice(0, 10);
+        }
+        Config.saveProfile(State.myNickname, State.myCustom);
+        Network.broadcastMyCustomization();
+        entryScreenEl.classList.add('hidden');
+
+        // 만약 멀티 대기방에 연결된 상태였다면 대기방 모달로 복귀, 아니면 로컬 라운드 시작
+        if (State.isP2PConnected && State.gameState === 'WAITING') {
+          Network.openMultiModal();
+        } else if (State.gameState !== 'PLAYING') {
+          startRound(false);
+        }
+      });
+    }
+
+    // [🌐 멀티플레이 대기방 만들기 / 입장] 버튼
+    const btnMulti = document.getElementById('btn-entry-multi');
+    if (btnMulti) {
+      btnMulti.addEventListener('click', () => {
+        if (entryNicknameEl && entryNicknameEl.value.trim()) {
+          State.myNickname = entryNicknameEl.value.trim().slice(0, 10);
+        }
+        Config.saveProfile(State.myNickname, State.myCustom);
+        Network.broadcastMyCustomization();
+        entryScreenEl.classList.add('hidden');
+        Network.openMultiModal();
+      });
+    }
+
+    // 상단 바 [👕 캐릭터 꾸미기] 버튼
+    const btnOpenCustom = document.getElementById('btn-open-custom');
+    if (btnOpenCustom) {
+      btnOpenCustom.addEventListener('click', openCustomizerModal);
+    }
+
+    renderCustomButtons();
+  }
+
+  function openCustomizerModal() {
+    if (entryNicknameEl) entryNicknameEl.value = State.myNickname;
+    const btnSolo = document.getElementById('btn-entry-solo');
+    if (btnSolo) {
+      btnSolo.innerHTML = State.gameState === 'PLAYING'
+        ? '<span>✅ 꾸미기 저장 & 게임으로 돌아가기</span>'
+        : '<span>🎮 혼자 / 로컬 연습 시작하기</span>';
+    }
+    entryScreenEl.classList.remove('hidden');
+  }
+
+  // 4. 모드 스위처, 'YOU' 화살표 표시 & 2P 자동 도우미 제어
   function updatePromptVisibility() {
     const promptEl = document.getElementById('prompt-text');
-    if (State.gameState === 'WAITING') {
-      promptEl.textContent = '제시어: (대기방 준비 중...)';
+    if (State.gameState === 'WAITING' || State.gameState === 'LOBBY') {
+      promptEl.textContent = '제시어: (대기실 준비 중...)';
     } else if (State.controlMode === 'SPECTATOR') {
       promptEl.textContent = `제시어: ${State.currentPrompt.word.replace(/[^\s]/g, '❓')}`;
     } else {
@@ -71,9 +235,18 @@ window.onload = function () {
     updateAiButtonUI();
   });
 
-  // 4. 실시간 채팅 & 라운드 진행 제어
+  // 5. 실시간 채팅 & 라운드 진행 제어
   chatInputEl.addEventListener('focus', () => { State.isTypingChat = true; });
   chatInputEl.addEventListener('blur', () => { State.isTypingChat = false; });
+
+  const mpNicknameEl = document.getElementById('mp-nickname');
+  const mpRoomcodeEl = document.getElementById('mp-roomcode');
+  [mpNicknameEl, mpRoomcodeEl].forEach(el => {
+    if (el) {
+      el.addEventListener('focus', () => { State.isTypingChat = true; });
+      el.addEventListener('blur', () => { State.isTypingChat = false; });
+    }
+  });
 
   function addChatMessage(sender, text, type = 'normal') {
     const div = document.createElement('div');
@@ -124,7 +297,7 @@ window.onload = function () {
     if (!rawText) return;
     chatInputEl.value = '';
 
-    const senderName = State.isP2PConnected ? State.myNickname : '나';
+    const senderName = State.myNickname || '나';
 
     if (State.gameState === 'PLAYING' && normalizeAnswer(rawText) === normalizeAnswer(State.currentPrompt.word)) {
       addChatMessage('', `🎊 [${senderName}]님이 정답 [${State.currentPrompt.word}] 판정 성공!`, 'correct');
@@ -148,7 +321,6 @@ window.onload = function () {
 
   let timerInterval = null;
 
-  // 멀티플레이 대기방 입장 시 라운드 타이머 일시정지
   function pauseForWaitingRoom() {
     State.gameState = 'WAITING';
     if (timerInterval) clearInterval(timerInterval);
@@ -172,13 +344,15 @@ window.onload = function () {
     timerTextEl.classList.remove('urgent-timer');
     document.getElementById('result-modal').classList.add('hidden');
     document.getElementById('result-modal').classList.remove('flex');
+    if (entryScreenEl) entryScreenEl.classList.add('hidden');
+
     updatePromptVisibility();
     Scene3D.updateYouMarkersVisibility();
+    Scene3D.syncRosterCustomizations();
 
     Scene3D.clearCanvas();
     Scene3D.clearConfetti();
 
-    // 캐릭터 초기 위치 세팅 (2P는 기본 검정색 발판 근처에서 시작)
     p1Obj.group.position.set(0, 0, 2.2);
     p2Obj.group.position.set(1.1, 0, -6.8);
     State.p1State.vx = State.p1State.vz = State.p2State.vx = State.p2State.vz = 0;
@@ -287,18 +461,27 @@ window.onload = function () {
     link.click();
   });
 
-  // 5. 네트워크/대기방 초기화
+  // 6. 네트워크/대기방 & 커스터마이징 UI 초기화
+  initCustomizerUI();
   Network.initNetworkAndLobby({
     onAddChatMessage: addChatMessage,
     onEndRound: endRound,
     onStartRound: startRound,
     onPauseForWaitingRoom: pauseForWaitingRoom,
+    onOpenCustomizer: openCustomizerModal,
     onSetMode: setMode,
     onUpdateAiButtonUI: updateAiButtonUI,
     normalizeAnswer
   });
 
-  // 6. 키보드 및 마우스/터치 입력
+  // 최초 접속 시 대기화면(LOBBY) 상태 세팅
+  p1Obj.group.position.set(0, 0, 2.2);
+  p2Obj.group.position.set(1.1, 0, -6.8);
+  timerTextEl.textContent = '대기중';
+  updatePromptVisibility();
+  addChatMessage('', '✨ 반반 무마니 3D에 오신 것을 환영합니다! 대기화면에서 내 캐릭터를 꾸미고 시작해 보세요.', 'system');
+
+  // 7. 키보드 및 마우스/터치 입력
   const keys = {};
   window.addEventListener('keydown', (e) => {
     if (!State.isTypingChat) keys[e.code] = true;
@@ -324,21 +507,20 @@ window.onload = function () {
   });
   window.addEventListener('pointerup', () => { pointerTarget = null; });
 
-  // 7. 메인 애니메이션 루프 (60FPS 기준 deltaTime 정규화로 호스트/클라이언트 이동속도 완벽 통일)
+  // 8. 메인 애니메이션 루프 (60FPS 기준 deltaTime 정규화)
   const clock = new THREE.Clock();
-  const colorPadXList = [-6.5, -4.6, -2.7, -0.8, 1.1]; // 빨, 노, 초, 파, 검
+  const colorPadXList = [-6.5, -4.6, -2.7, -0.8, 1.1];
 
   function animate() {
     requestAnimationFrame(animate);
     const rawDelta = clock.getDelta();
     const elapsedTime = clock.elapsedTime;
-    // 모니터 주사율(60Hz, 144Hz, 240Hz) 차이에 상관없이 60FPS 기준 1.0으로 물리 스텝 고정
     const dtScale = Math.min(rawDelta, 0.1) * 60;
 
     if (State.gameState === 'PLAYING') {
       const { p1State, p2State } = State;
 
-      // --- 1P 브러시 러너 이동 (deltaTime 정규화 + 대각선 속도 보정) ---
+      // --- 1P 브러시 러너 이동 ---
       if (State.controlMode === 'BOTH' || State.controlMode === 'P1') {
         let ix1 = 0;
         let iz1 = 0;
@@ -384,7 +566,7 @@ window.onload = function () {
         }
       }
 
-      // --- 2P 팔레트 엔지니어 이동 (deltaTime 정규화 + 대각선 속도 보정) ---
+      // --- 2P 팔레트 엔지니어 이동 ---
       const manualP2Pressed = keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight'];
       if (manualP2Pressed && State.aiHelperEnabled) {
         State.aiHelperEnabled = false;
@@ -414,7 +596,6 @@ window.onload = function () {
         p2Obj.group.position.x += p2State.vx * dtScale;
         p2Obj.group.position.z += p2State.vz * dtScale;
       } else if (State.aiHelperEnabled && (!State.isP2PConnected || State.isP2PHost)) {
-        // 2P AI 도우미: 색상 발판 위에 서서 펜 ON을 유지하며 주기적으로 색상을 바꿔줌 (전체지우기 발판은 밟지 않음)
         State.aiTimer += dtScale;
         if (State.aiTimer >= 260) {
           State.aiTimer = 0;
@@ -429,13 +610,10 @@ window.onload = function () {
         p2State.vz = (p2Obj.group.position.z - prevP2Z) / Math.max(dtScale, 0.01);
       }
 
-      // 확장된 상단 데크 범위 내로 위치 제한 (-7.8 ~ +8.2)
       p2Obj.group.position.x = Math.max(-7.8, Math.min(8.2, p2Obj.group.position.x));
       p2Obj.group.position.z = Math.max(-8.5, Math.min(-5.1, p2Obj.group.position.z));
 
       // --- 2P 발판 충돌 판정 ---
-      // 1) 색 발판을 밟고 있는 동안만 자동으로 펜 ON (발을 떼면 즉시 펜 OFF!)
-      // 2) 오른쪽 끝 멀리 있는 [💥도화지 지우기] 발판을 밟으면 도화지 초기화!
       let steppedColorHex = null;
       let steppedColorName = '발판 대기 (OFF)';
       let currentlyOnClear = false;
@@ -466,14 +644,12 @@ window.onload = function () {
         padItem.wasStepped = isStepped;
       });
 
-      // 내가 2P 권한을 가진 경우(또는 로컬/AI) 발판 상태 결정 및 전송
       const isControllingP2 = State.controlMode === 'BOTH' || State.controlMode === 'P2' || (State.aiHelperEnabled && (!State.isP2PConnected || State.isP2PHost));
       if (isControllingP2) {
         State.activeColorHex = steppedColorHex;
         State.activeColorName = steppedColorName;
         State.isPenDown = Boolean(steppedColorHex);
 
-        // 2P 전용 [💥도화지 지우기] 발판 작동 (새로 밟는 순간 1회 실행)
         if (currentlyOnClear && !State.wasOnClearPad) {
           Scene3D.clearCanvas();
           addChatMessage('', '💥 2P 팔레트 엔지니어가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!', 'system');
@@ -493,7 +669,6 @@ window.onload = function () {
         });
       }
 
-      // 상단 상태바 & 브러시/전구 색상 반영
       uiPenStatus.textContent = State.isPenDown ? `ON (${State.activeColorName} 공급중)` : 'OFF (발판 떨어짐)';
       uiPenStatus.className = State.isPenDown ? 'text-emerald-400 font-extrabold' : 'text-rose-500 font-extrabold';
       uiColorPreview.style.background = State.activeColorHex || 'transparent';
@@ -501,18 +676,14 @@ window.onload = function () {
       p1Obj.tipMat.color.set(State.activeColorHex || '#ffffff');
       p2Obj.tipMat.color.set(State.activeColorHex || '#63666f');
 
-      // 바닥 페인팅 및 물감 튀김 파티클
       Scene3D.paintStrokeOnBoard();
     }
 
-    // 캐릭터 비주얼/모션('YOU' 화살표 포함) 및 파티클 업데이트
     Scene3D.updateCharacterVisuals(p1Obj, State.p1State.vx, State.p1State.vz, elapsedTime, State.isPenDown, dtScale);
     Scene3D.updateCharacterVisuals(p2Obj, State.p2State.vx, State.p2State.vz, elapsedTime, false, dtScale);
     Scene3D.updateParticles(dtScale);
-    Scene3D.renderFrame();
+    Scene3D.renderFrame(elapsedTime, dtScale);
   }
 
-  // 게임 시작!
-  startRound(false);
   animate();
 };

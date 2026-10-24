@@ -34,9 +34,10 @@ function getOrCreateRoom(roomCode) {
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('JOIN_ROOM', ({ roomCode, nickname }) => {
+  socket.on('JOIN_ROOM', ({ roomCode, nickname, custom }) => {
     const code = (roomCode || 'PARTY7').trim().toUpperCase();
     const cleanName = (nickname || '익명화가').trim().slice(0, 10);
+    const safeCustom = custom || { color: '#ec4899', hat: 'BERET', face: 'NORMAL' };
 
     if (currentRoom) {
       socket.leave(currentRoom);
@@ -55,13 +56,15 @@ io.on('connection', (socket) => {
     const existingIdx = room.roster.findIndex(p => p.id === socket.id);
     if (existingIdx >= 0) {
       room.roster[existingIdx].nickname = cleanName;
+      room.roster[existingIdx].custom = safeCustom;
       assignedRole = room.roster[existingIdx].role;
     } else {
       room.roster.push({
         id: socket.id,
         nickname: cleanName,
         role: assignedRole,
-        score: 0
+        score: 0,
+        custom: safeCustom
       });
     }
 
@@ -113,6 +116,12 @@ io.on('connection', (socket) => {
         if (Array.isArray(data.roster)) room.roster = data.roster;
       } else if (data.type === 'ROSTER_SYNC' && Array.isArray(data.roster)) {
         room.roster = data.roster;
+      } else if (data.type === 'CUSTOM_UPDATE' && data.peerId && data.custom) {
+        const target = room.roster.find(p => p.id === data.peerId);
+        if (target) {
+          target.custom = data.custom;
+          if (data.nickname) target.nickname = data.nickname;
+        }
       }
     }
 

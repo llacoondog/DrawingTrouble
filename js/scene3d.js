@@ -1,5 +1,5 @@
 // ==========================================
-// 반반 무마니 3D - Three.js 씬, 캐릭터('YOU' 화살표), 발판, 파티클 (scene3d.js)
+// 반반 무마니 3D - Three.js 씬, 3D 캐릭터 커스터마이징, 프리뷰 렌더러 (scene3d.js)
 // ==========================================
 window.BanBan = window.BanBan || {};
 
@@ -13,6 +13,12 @@ window.BanBan.Scene3D = (function () {
   const paintDroplets = [];
   const padRipples = [];
   const confettiParticles = [];
+
+  // 대기화면 전용 3D 캐릭터 클로즈업 프리뷰 씬
+  let previewScene = null;
+  let previewCamera = null;
+  let previewRenderer = null;
+  let previewCharObj = null;
 
   const dropletGeo = new THREE.SphereGeometry(0.11, 8, 8);
   const rippleGeo = new THREE.RingGeometry(0.75, 0.95, 28);
@@ -28,7 +34,6 @@ window.BanBan.Scene3D = (function () {
 
     c.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 둥근 캡슐 배경
     const r = 24;
     const x = 10, y = 10, w = canvas.width - 20, h = canvas.height - 20;
     c.beginPath();
@@ -68,28 +73,285 @@ window.BanBan.Scene3D = (function () {
   // 캐릭터 머리 위 상단 'YOU' + 입체 화살표(▼) 마커 생성
   function createYouMarker(roleType) {
     const markerGroup = new THREE.Group();
-    markerGroup.position.set(0, 2.35, 0);
+    markerGroup.position.set(0, 2.52, 0);
 
     const isP1 = roleType === 'P1';
     const badgeColor = isP1 ? '#ec4899' : '#06b6d4';
     const coneColor = isP1 ? 0xf472b6 : 0x22d3ee;
     const labelText = isP1 ? 'YOU (1P)' : 'YOU (2P)';
 
-    // 상단 'YOU' 텍스트 배지
     const sprite = createTextSprite(labelText, badgeColor, '#ffffff', '#ffffff', 1.85, 0.58);
     sprite.position.set(0, 0.42, 0);
     markerGroup.add(sprite);
 
-    // 하단 가리키는 3D 역원뿔 화살표 (▼)
     const arrowCone = new THREE.Mesh(
       new THREE.ConeGeometry(0.22, 0.38, 16),
       new THREE.MeshBasicMaterial({ color: coneColor })
     );
-    arrowCone.rotation.x = Math.PI; // 아래쪽을 가리키도록 회전
+    arrowCone.rotation.x = Math.PI;
     arrowCone.position.set(0, 0, 0);
     markerGroup.add(arrowCone);
 
     return markerGroup;
+  }
+
+  // 3D 모자/머리장식 메쉬 생성기 (7종)
+  function populateHatGroup(hatGroup, hatId, tipMat) {
+    while (hatGroup.children.length > 0) {
+      hatGroup.remove(hatGroup.children[0]);
+    }
+    hatGroup.userData.propellerBlade = null;
+    hatGroup.userData.haloRing = null;
+
+    if (hatId === 'BERET') {
+      const beretMat = new THREE.MeshToonMaterial({ color: 0xf472b6 });
+      const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.14, 20), beretMat);
+      beret.position.set(0, 1.48, -0.03);
+      beret.rotation.z = -0.16;
+      beret.castShadow = true;
+      hatGroup.add(beret);
+
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8), beretMat);
+      stem.position.set(0.02, 1.57, -0.03);
+      hatGroup.add(stem);
+    } else if (hatId === 'HELMET') {
+      const helmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.49, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 })
+      );
+      helmet.position.y = 1.08;
+      helmet.castShadow = true;
+      hatGroup.add(helmet);
+
+      const visor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.08, 0.35),
+        new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 })
+      );
+      visor.position.set(0, 1.12, 0.38);
+      hatGroup.add(visor);
+
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), tipMat);
+      bulb.position.y = 1.65;
+      hatGroup.add(bulb);
+    } else if (hatId === 'CROWN') {
+      const goldMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        metalness: 0.65,
+        roughness: 0.25,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.15
+      });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.22, 16), goldMat);
+      base.position.set(0, 1.54, 0);
+      base.castShadow = true;
+      hatGroup.add(base);
+
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 8), goldMat);
+        spike.position.set(Math.cos(angle) * 0.24, 1.72, Math.sin(angle) * 0.24);
+        hatGroup.add(spike);
+      }
+
+      const gem = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+      );
+      gem.position.set(0, 1.55, 0.29);
+      hatGroup.add(gem);
+    } else if (hatId === 'CAT_EARS') {
+      const outerMat = new THREE.MeshToonMaterial({ color: 0x1e293b });
+      const innerMat = new THREE.MeshBasicMaterial({ color: 0xf472b6 });
+
+      [-1, 1].forEach(dir => {
+        const earGroup = new THREE.Group();
+        earGroup.position.set(dir * 0.28, 1.44, 0.02);
+        earGroup.rotation.z = -dir * 0.32;
+
+        const outerCone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 12), outerMat);
+        outerCone.castShadow = true;
+        earGroup.add(outerCone);
+
+        const innerCone = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 10), innerMat);
+        innerCone.position.set(0, -0.02, 0.06);
+        earGroup.add(innerCone);
+
+        hatGroup.add(earGroup);
+      });
+    } else if (hatId === 'HALO') {
+      const haloRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.34, 0.055, 12, 32),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      haloRing.rotation.x = Math.PI / 2;
+      haloRing.position.set(0, 1.76, 0);
+      hatGroup.add(haloRing);
+      hatGroup.userData.haloRing = haloRing;
+    } else if (hatId === 'PROPELLER') {
+      const capDome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.42, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshToonMaterial({ color: 0x3b82f6 })
+      );
+      capDome.position.y = 1.16;
+      hatGroup.add(capDome);
+
+      const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15 })
+      );
+      pin.position.set(0, 1.62, 0);
+      hatGroup.add(pin);
+
+      const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.68, 0.03, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      blade.position.set(0, 1.70, 0);
+      hatGroup.add(blade);
+      hatGroup.userData.propellerBlade = blade;
+    }
+  }
+
+  // 3D 얼굴/눈 표정 생성기 (4종: NORMAL, COOL, HAPPY, STAR)
+  function populateFaceGroup(faceGroup, faceId) {
+    while (faceGroup.children.length > 0) {
+      faceGroup.remove(faceGroup.children[0]);
+    }
+
+    const darkMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const goldMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const blushMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.55 });
+
+    // 공통 볼터치
+    [-0.28, 0.28].forEach(offsetX => {
+      const blush = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), blushMat);
+      blush.scale.set(1.2, 0.65, 0.4);
+      blush.position.set(offsetX, -0.07, -0.02);
+      faceGroup.add(blush);
+    });
+
+    if (faceId === 'COOL') {
+      // 패기 넘치는 선글라스
+      const frameBridge = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.05, 0.06), darkMat);
+      frameBridge.position.set(0, 0.08, 0.06);
+      faceGroup.add(frameBridge);
+
+      [-0.17, 0.17].forEach(offsetX => {
+        const lens = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.07), darkMat);
+        lens.position.set(offsetX, 0.04, 0.06);
+        faceGroup.add(lens);
+
+        const glint = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.08), whiteMat);
+        glint.rotation.z = -0.35;
+        glint.position.set(offsetX - 0.05, 0.05, 0.065);
+        faceGroup.add(glint);
+      });
+    } else if (faceId === 'HAPPY') {
+      // 귀여운 반달 눈웃음 (^ ^)
+      [-0.17, 0.17].forEach(offsetX => {
+        const arc = new THREE.Mesh(
+          new THREE.TorusGeometry(0.085, 0.026, 8, 16, Math.PI),
+          darkMat
+        );
+        arc.position.set(offsetX, 0.02, 0.04);
+        faceGroup.add(arc);
+      });
+    } else if (faceId === 'STAR') {
+      // 반짝반짝 황금 별 눈동자
+      [-0.17, 0.17].forEach(offsetX => {
+        const eyeBase = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 16), darkMat);
+        eyeBase.scale.set(1, 1.15, 0.55);
+        eyeBase.position.set(offsetX, 0.04, 0);
+        faceGroup.add(eyeBase);
+
+        const star1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.04), goldMat);
+        star1.position.set(offsetX, 0.04, 0.06);
+        faceGroup.add(star1);
+
+        const star2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.04), goldMat);
+        star2.position.set(offsetX, 0.04, 0.06);
+        faceGroup.add(star2);
+      });
+    } else {
+      // 기본 초롱초롱 눈 (NORMAL)
+      [-0.17, 0.17].forEach(offsetX => {
+        const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), whiteMat);
+        eyeWhite.scale.set(1, 1.15, 0.55);
+        eyeWhite.position.set(offsetX, 0.04, 0);
+        faceGroup.add(eyeWhite);
+
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), darkMat);
+        pupil.scale.set(1, 1.1, 0.5);
+        pupil.position.set(offsetX, 0.04, 0.045);
+        faceGroup.add(pupil);
+
+        const shine = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), whiteMat);
+        shine.position.set(offsetX + 0.025, 0.07, 0.07);
+        faceGroup.add(shine);
+      });
+    }
+  }
+
+  // 캐릭터에 커스터마이징 데이터(색상, 모자, 표정) 즉시 반영
+  function applyCharacterCustomization(charObj, customData) {
+    if (!charObj || !customData) return;
+    const colorHex = customData.color || '#ec4899';
+    const hatId = customData.hat || 'BERET';
+    const faceId = customData.face || 'NORMAL';
+
+    charObj.jellyMat.color.set(colorHex);
+    populateHatGroup(charObj.hatGroup, hatId, charObj.tipMat);
+    populateFaceGroup(charObj.faceGroup, faceId);
+  }
+
+  // playerRoster 기준으로 1P, 2P 인게임 캐릭터 및 프리뷰 캐릭터 외형 동기화
+  function syncRosterCustomizations() {
+    if (p1Obj) {
+      const p1Entry = State.playerRoster.find(p => p.role === 'P1');
+      const p1Custom = p1Entry?.custom || State.myCustom;
+      applyCharacterCustomization(p1Obj, p1Custom);
+    }
+    if (p2Obj) {
+      const p2Entry = State.playerRoster.find(p => p.role === 'P2');
+      const p2Custom = p2Entry?.custom || State.p2DefaultCustom;
+      applyCharacterCustomization(p2Obj, p2Custom);
+    }
+    if (previewCharObj) {
+      applyCharacterCustomization(previewCharObj, State.myCustom);
+    }
+  }
+
+  // 대기화면(Entry Screen) 내부 3D 캐릭터 프리뷰 캔버스 초기화
+  function initPreviewCanvas(canvasEl) {
+    if (!canvasEl) return;
+    previewScene = new THREE.Scene();
+    previewScene.background = new THREE.Color(0x141824);
+
+    previewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+    previewCamera.position.set(0, 1.25, 3.6);
+    previewCamera.lookAt(0, 0.95, 0);
+
+    previewRenderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+    previewRenderer.setSize(220, 220);
+    previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    previewScene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    const pLight = new THREE.DirectionalLight(0xffffff, 0.65);
+    pLight.position.set(3, 6, 5);
+    previewScene.add(pLight);
+
+    // 프리뷰 받침대 원형 단상
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.82, 0.92, 0.16, 32),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.3 })
+    );
+    pedestal.position.y = -0.08;
+    previewScene.add(pedestal);
+
+    previewCharObj = createJellyCharacter(State.myCustom.color, 'PREVIEW', State.myCustom);
+    previewCharObj.youMarker.visible = false;
+    previewScene.add(previewCharObj.group);
   }
 
   function initScene(container) {
@@ -169,7 +431,7 @@ window.BanBan.Scene3D = (function () {
     });
     scene.add(frameGroup);
 
-    // 상단 2P 컨트롤 데크 (우측 끝에 멀리 떨어진 도화지 지우기 버튼을 수용하도록 확장)
+    // 상단 2P 컨트롤 데크
     const controlDeck = new THREE.Mesh(
       new THREE.BoxGeometry(17.6, 0.6, 4.4),
       new THREE.MeshStandardMaterial({ color: 0x262936, roughness: 0.5, metalness: 0.2 })
@@ -217,7 +479,6 @@ window.BanBan.Scene3D = (function () {
       pad.castShadow = true;
       scene.add(pad);
 
-      // 발판 상단 3D 라벨 표시
       const labelSprite = createTextSprite(
         data.label,
         isClearPad ? 'rgba(159, 18, 57, 0.92)' : 'rgba(15, 23, 42, 0.82)',
@@ -232,17 +493,22 @@ window.BanBan.Scene3D = (function () {
       padMeshes.push({ mesh: pad, mat: padMat, data, wasStepped: false });
     });
 
-    // 1P 브러시 러너 (핑크 젤리빈), 2P 팔레트 엔지니어 (시안 젤리빈)
-    p1Obj = createJellyCharacter(0xec4899, 'P1');
-    p2Obj = createJellyCharacter(0x06b6d4, 'P2');
+    // 1P 브러시 러너, 2P 팔레트 엔지니어 생성 및 커스터마이징 적용
+    p1Obj = createJellyCharacter(State.myCustom.color, 'P1', State.myCustom);
+    p2Obj = createJellyCharacter(State.p2DefaultCustom.color, 'P2', State.p2DefaultCustom);
     scene.add(p1Obj.group);
     scene.add(p2Obj.group);
+
+    // 대기화면용 프리뷰 캔버스도 함께 초기화
+    const previewCanvasEl = document.getElementById('custom-preview-canvas');
+    if (previewCanvasEl) {
+      initPreviewCanvas(previewCanvasEl);
+    }
 
     updateYouMarkersVisibility();
     window.addEventListener('resize', handleResize);
   }
 
-  // 현재 조작 모드(P1 / P2 / BOTH / SPECTATOR)에 맞춰 'YOU' 화살표 노출 갱신
   function updateYouMarkersVisibility() {
     if (!p1Obj || !p2Obj) return;
     if (State.controlMode === 'P1') {
@@ -292,15 +558,12 @@ window.BanBan.Scene3D = (function () {
     img.src = dataUrl;
   }
 
-  function createJellyCharacter(bodyColor, roleType) {
+  function createJellyCharacter(bodyColor, roleType, initialCustom = null) {
     const root = new THREE.Group();
     const animGroup = new THREE.Group();
     root.add(animGroup);
 
     const jellyMat = new THREE.MeshToonMaterial({ color: bodyColor });
-    const darkMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
-    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const blushMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.55 });
 
     // 1) 통통한 젤리빈 캡슐 몸통
     const torsoGroup = new THREE.Group();
@@ -320,32 +583,9 @@ window.BanBan.Scene3D = (function () {
     torsoGroup.add(botDome);
     animGroup.add(torsoGroup);
 
-    // 2) 귀여운 3D 눈 & 발그레 볼터치
+    // 2) 커스텀 가능한 얼굴 그룹
     const faceGroup = new THREE.Group();
     faceGroup.position.set(0, 0.92, 0.41);
-
-    [-0.17, 0.17].forEach(offsetX => {
-      const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), whiteMat);
-      eyeWhite.scale.set(1, 1.15, 0.55);
-      eyeWhite.position.set(offsetX, 0.04, 0);
-      faceGroup.add(eyeWhite);
-
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), darkMat);
-      pupil.scale.set(1, 1.1, 0.5);
-      pupil.position.set(offsetX, 0.04, 0.045);
-      faceGroup.add(pupil);
-
-      const shine = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), whiteMat);
-      shine.position.set(offsetX + 0.025, 0.07, 0.07);
-      faceGroup.add(shine);
-    });
-
-    [-0.28, 0.28].forEach(offsetX => {
-      const blush = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 12), blushMat);
-      blush.scale.set(1.2, 0.65, 0.4);
-      blush.position.set(offsetX, -0.07, -0.02);
-      faceGroup.add(blush);
-    });
     animGroup.add(faceGroup);
 
     // 3) 짧은 젤리 팔 & 다리
@@ -375,16 +615,13 @@ window.BanBan.Scene3D = (function () {
     rightLeg.castShadow = true;
     root.add(rightLeg);
 
-    // 4) 역할별 전용 3D 소품 장착
+    // 4) 모자/장식 그룹 & 1P 전용 붓 소품
     const tipMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+    const hatGroup = new THREE.Group();
+    animGroup.add(hatGroup);
+
     let brushPivot = null;
-
-    if (roleType === 'P1') {
-      const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.12, 20), new THREE.MeshToonMaterial({ color: 0xf472b6 }));
-      beret.position.set(0, 1.48, -0.04);
-      beret.rotation.z = -0.15;
-      animGroup.add(beret);
-
+    if (roleType === 'P1' || roleType === 'PREVIEW') {
       brushPivot = new THREE.Group();
       brushPivot.position.set(0.45, 0.75, 0.1);
 
@@ -413,34 +650,18 @@ window.BanBan.Scene3D = (function () {
       brushPivot.add(bristle);
 
       animGroup.add(brushPivot);
-    } else {
-      const helmet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.49, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.55),
-        new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 })
-      );
-      helmet.position.y = 1.08;
-      helmet.castShadow = true;
-      animGroup.add(helmet);
-
-      const visor = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 0.08, 0.35),
-        new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 })
-      );
-      visor.position.set(0, 1.12, 0.38);
-      animGroup.add(visor);
-
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), tipMat);
-      bulb.position.y = 1.65;
-      animGroup.add(bulb);
     }
 
-    // 5) 머리 위 'YOU' 화살표 마커 부착 (회전 영향을 받지 않도록 root에 추가)
-    const youMarker = createYouMarker(roleType);
+    // 5) 머리 위 'YOU' 화살표 마커 부착
+    const youMarker = createYouMarker(roleType === 'P2' ? 'P2' : 'P1');
     root.add(youMarker);
 
-    return {
+    const charObj = {
       group: root,
       animGroup,
+      jellyMat,
+      faceGroup,
+      hatGroup,
       leftArm,
       rightArm,
       leftLeg,
@@ -450,6 +671,15 @@ window.BanBan.Scene3D = (function () {
       youMarker,
       targetAngle: 0
     };
+
+    const customToApply = initialCustom || {
+      color: bodyColor,
+      hat: roleType === 'P2' ? 'HELMET' : 'BERET',
+      face: 'NORMAL'
+    };
+    applyCharacterCustomization(charObj, customToApply);
+
+    return charObj;
   }
 
   function updateCharacterVisuals(charObj, vx, vz, elapsedTime, isPenActive, dtScale = 1) {
@@ -490,9 +720,17 @@ window.BanBan.Scene3D = (function () {
       charObj.rightArm.rotation.x *= decay;
     }
 
-    // 상단 'YOU' 화살표 위아래 통통 바운스 애니메이션 (캐릭터 회전과 무관하게 정면 유지)
+    // 프로펠러 모자 회전 및 헤일로 부유 애니메이션
+    if (charObj.hatGroup?.userData.propellerBlade) {
+      charObj.hatGroup.userData.propellerBlade.rotation.y += 0.32 * dtScale;
+    }
+    if (charObj.hatGroup?.userData.haloRing) {
+      charObj.hatGroup.userData.haloRing.position.y = 1.76 + Math.sin(elapsedTime * 5) * 0.05;
+    }
+
+    // 상단 'YOU' 화살표 위아래 바운스 애니메이션
     if (charObj.youMarker && charObj.youMarker.visible) {
-      charObj.youMarker.position.y = 2.35 + Math.sin(elapsedTime * 6) * 0.14;
+      charObj.youMarker.position.y = 2.52 + Math.sin(elapsedTime * 6) * 0.14;
       charObj.youMarker.rotation.y = -charObj.group.rotation.y;
     }
 
@@ -575,7 +813,6 @@ window.BanBan.Scene3D = (function () {
   }
 
   function updateParticles(dtScale = 1) {
-    // 1) 3D 물감 방울 파티클 업데이트
     for (let i = paintDroplets.length - 1; i >= 0; i--) {
       const d = paintDroplets[i];
       d.vy -= 0.008 * dtScale;
@@ -591,7 +828,6 @@ window.BanBan.Scene3D = (function () {
       }
     }
 
-    // 2) 발판 파동(Ripple) 링 업데이트
     for (let i = padRipples.length - 1; i >= 0; i--) {
       const r = padRipples[i];
       r.scale += 0.06 * dtScale;
@@ -605,7 +841,6 @@ window.BanBan.Scene3D = (function () {
       }
     }
 
-    // 3) 3D 폭죽(Confetti) 중력 물리 업데이트
     for (let i = confettiParticles.length - 1; i >= 0; i--) {
       const p = confettiParticles[i];
       p.vy -= 0.009 * dtScale;
@@ -669,14 +904,35 @@ window.BanBan.Scene3D = (function () {
     State.p1State.prevZ = pixelY;
   }
 
-  function renderFrame() {
+  function renderFrame(elapsedTime = 0, dtScale = 1) {
     renderer.render(scene, camera);
+
+    // 대기화면(Entry Lobby)이 열려 있을 때 3D 클로즈업 프리뷰 캐릭터도 회전/바운스 렌더링
+    if (previewRenderer && previewScene && previewCamera && previewCharObj) {
+      const entryModal = document.getElementById('entry-screen');
+      if (entryModal && !entryModal.classList.contains('hidden')) {
+        previewCharObj.group.rotation.y = Math.sin(elapsedTime * 1.4) * 0.55;
+        const bounce = Math.abs(Math.sin(elapsedTime * 5.5));
+        previewCharObj.animGroup.position.y = bounce * 0.1;
+        previewCharObj.leftArm.rotation.x = Math.sin(elapsedTime * 5.5) * 0.35;
+        previewCharObj.rightArm.rotation.x = -Math.sin(elapsedTime * 5.5) * 0.35;
+        if (previewCharObj.hatGroup?.userData.propellerBlade) {
+          previewCharObj.hatGroup.userData.propellerBlade.rotation.y += 0.32 * dtScale;
+        }
+        if (previewCharObj.hatGroup?.userData.haloRing) {
+          previewCharObj.hatGroup.userData.haloRing.position.y = 1.76 + Math.sin(elapsedTime * 5) * 0.05;
+        }
+        previewRenderer.render(previewScene, previewCamera);
+      }
+    }
   }
 
   return {
     initScene,
     clearCanvas,
     loadCanvasFromDataURL,
+    applyCharacterCustomization,
+    syncRosterCustomizations,
     updateYouMarkersVisibility,
     updateCharacterVisuals,
     spawnPaintSplatter,
