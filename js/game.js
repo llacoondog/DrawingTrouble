@@ -809,17 +809,32 @@ function initGameApp() {
     if (State.gameState === 'PLAYING') {
       const { p1State, p2State } = State;
 
-      // --- 1P 브러시 러너 이동 및 점프 ---
+      // --- 1P & 2P 조작키 WASD 통일 (현재 내 역할에 따라 WASD가 1P 또는 2P를 조작) ---
       const isWasdHeld = Boolean(keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
       const isArrowHeld = Boolean(keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight']);
+
+      const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+      const myEntry = State.playerRoster.find(p => p.id === myId);
+      const myAssignedRole = myEntry?.role || 'P1';
+
+      const p1UsesWasd = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && myAssignedRole !== 'P2');
+      const p1UsesArrows = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && myAssignedRole === 'P2');
+
+      const p2UsesWasd = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && myAssignedRole === 'P2');
+      const p2UsesArrows = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && myAssignedRole !== 'P2');
 
       if (State.controlMode === 'BOTH' || State.controlMode === 'P1') {
         let ix1 = 0;
         let iz1 = 0;
-        if (keys['KeyW']) { iz1 -= 1; pointerTarget = null; }
-        if (keys['KeyS']) { iz1 += 1; pointerTarget = null; }
-        if (keys['KeyA']) { ix1 -= 1; pointerTarget = null; }
-        if (keys['KeyD']) { ix1 += 1; pointerTarget = null; }
+        const p1Up = (p1UsesWasd && keys['KeyW']) || (p1UsesArrows && keys['ArrowUp']);
+        const p1Down = (p1UsesWasd && keys['KeyS']) || (p1UsesArrows && keys['ArrowDown']);
+        const p1Left = (p1UsesWasd && keys['KeyA']) || (p1UsesArrows && keys['ArrowLeft']);
+        const p1Right = (p1UsesWasd && keys['KeyD']) || (p1UsesArrows && keys['ArrowRight']);
+
+        if (p1Up)    { iz1 -= 1; pointerTarget = null; }
+        if (p1Down)  { iz1 += 1; pointerTarget = null; }
+        if (p1Left)  { ix1 -= 1; pointerTarget = null; }
+        if (p1Right) { ix1 += 1; pointerTarget = null; }
 
         if (ix1 !== 0 || iz1 !== 0) {
           const len = Math.hypot(ix1, iz1);
@@ -837,8 +852,8 @@ function initGameApp() {
           }
         }
 
-        // 스페이스바 점프: 1P 전용 모드이거나, 동시 조작(BOTH)에서 방향키만 단독으로 누르고 있지 않을 때 1P 점프
-        const shouldP1Jump = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && (isWasdHeld || !isArrowHeld));
+        // 스페이스바 점프: 내 주 조작 캐릭터(WASD 대상) 우선 점프
+        const shouldP1Jump = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && ((p1UsesWasd && (isWasdHeld || !isArrowHeld)) || (p1UsesArrows && isArrowHeld && !isWasdHeld)));
         if (keys['Space'] && shouldP1Jump && p1State.y <= 0.001 && p1State.vy <= 0) {
           p1State.vy = p1State.jumpForce;
           if (Sound) Sound.playJump(false);
@@ -884,14 +899,19 @@ function initGameApp() {
         }
       }
 
-      // --- 2P 팔레트 엔지니어 이동 및 점프 ---
+      // --- 2P 팔레트 엔지니어 이동 및 점프 (WASD로 통일 + 동시 조작 모드에서는 보조 방향키 지원) ---
       if (State.controlMode === 'BOTH' || State.controlMode === 'P2') {
         let ix2 = 0;
         let iz2 = 0;
-        if (keys['ArrowUp'])    iz2 -= 1;
-        if (keys['ArrowDown'])  iz2 += 1;
-        if (keys['ArrowLeft'])  ix2 -= 1;
-        if (keys['ArrowRight']) ix2 += 1;
+        const p2Up = (p2UsesWasd && keys['KeyW']) || (p2UsesArrows && keys['ArrowUp']);
+        const p2Down = (p2UsesWasd && keys['KeyS']) || (p2UsesArrows && keys['ArrowDown']);
+        const p2Left = (p2UsesWasd && keys['KeyA']) || (p2UsesArrows && keys['ArrowLeft']);
+        const p2Right = (p2UsesWasd && keys['KeyD']) || (p2UsesArrows && keys['ArrowRight']);
+
+        if (p2Up)    iz2 -= 1;
+        if (p2Down)  iz2 += 1;
+        if (p2Left)  ix2 -= 1;
+        if (p2Right) ix2 += 1;
 
         if (ix2 !== 0 || iz2 !== 0) {
           const len2 = Math.hypot(ix2, iz2);
@@ -899,8 +919,8 @@ function initGameApp() {
           p2State.vz += (iz2 / len2) * p2State.accel * dtScale;
         }
 
-        // 스페이스바 점프: 2P 전용 모드이거나, 동시 조작(BOTH)에서 WASD만 단독으로 누르고 있지 않을 때 2P 점프
-        const shouldP2Jump = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && (isArrowHeld || !isWasdHeld));
+        // 스페이스바 점프: 내 주 조작 캐릭터(WASD 대상) 우선 점프
+        const shouldP2Jump = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && ((p2UsesWasd && (isWasdHeld || !isArrowHeld)) || (p2UsesArrows && isArrowHeld && !isWasdHeld)));
         if (keys['Space'] && shouldP2Jump && p2State.y <= 0.001 && p2State.vy <= 0) {
           p2State.vy = p2State.jumpForce;
           if (Sound) Sound.playJump(true);

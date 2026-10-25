@@ -20,6 +20,10 @@ window.BanBan.Scene3D = (function () {
   let previewRenderer = null;
   let previewCharObj = null;
 
+  // 공간 좌측 (팔레트 옆 / 캔버스 옆) 현재 1P·2P 안내 3D 입체 표지판
+  let p1RoleBoard = null;
+  let p2RoleBoard = null;
+
   const dropletGeo = new THREE.SphereGeometry(0.11, 8, 8);
   const rippleGeo = new THREE.RingGeometry(0.75, 0.95, 28);
   rippleGeo.rotateX(-Math.PI / 2);
@@ -344,6 +348,177 @@ window.BanBan.Scene3D = (function () {
         previewRenderer.render(previewScene, previewCamera);
       }
     }
+    updateRoleSignboards();
+  }
+
+  function getHatEmoji(hatId) {
+    const found = Config.CUSTOM_HATS.find(h => h.id === hatId);
+    return found ? found.icon : '🎨';
+  }
+
+  // 공간 왼쪽 (팔레트 옆 / 캔버스 옆) 3D 역할 입체 표지판 생성
+  function createRoleSignboard(roleType, defaultX, defaultZ) {
+    const isP1 = roleType === 'P1';
+    const group = new THREE.Group();
+    group.position.set(defaultX, 0, defaultZ);
+
+    const accentHex = isP1 ? 0xf472b6 : 0x22d3ee;
+    const baseMat = new THREE.MeshToonMaterial({ color: 0x3b2d5e });
+    const rimMat = new THREE.MeshToonMaterial({ color: accentHex });
+
+    // 바닥 받침대 원판
+    const baseDisc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.18, 0.18, 24), baseMat);
+    baseDisc.position.y = -0.22;
+    baseDisc.receiveShadow = true;
+    group.add(baseDisc);
+
+    const rimDisc = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.06, 24), rimMat);
+    rimDisc.position.y = -0.12;
+    group.add(rimDisc);
+
+    // 우측(캔버스/팔레트 방향)을 가리키는 입체 화살표 콘
+    const arrowCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.26, 0.52, 16),
+      new THREE.MeshBasicMaterial({ color: accentHex })
+    );
+    arrowCone.rotation.z = -Math.PI / 2;
+    arrowCone.position.set(1.38, 0.08, 0);
+    group.add(arrowCone);
+
+    // 고해상도 2D 캔버스 기반 3D 빌보드 카드 스프라이트
+    const canvas = document.createElement('canvas');
+    canvas.width = 480;
+    canvas.height = 200;
+    const tex = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(4.1, 1.71, 1);
+    sprite.position.set(0, 1.05, 0);
+    sprite.renderOrder = 950;
+    group.add(sprite);
+
+    return {
+      roleType,
+      group,
+      sprite,
+      canvas,
+      tex,
+      defaultX,
+      defaultZ,
+      lastKey: ''
+    };
+  }
+
+  // 캔버스 옆(1P)과 팔레트 옆(2P) 표지판에 현재 누가 맡고 있는지 실시간 렌더링
+  function updateRoleSignboards() {
+    if (!p1RoleBoard || !p2RoleBoard) return;
+
+    const p1Entry = State.playerRoster.find(p => p.role === 'P1');
+    const p2Entry = State.playerRoster.find(p => p.role === 'P2');
+
+    const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+    const p1Nick = p1Entry?.nickname || State.myNickname || '1P 브러시';
+    const p1Custom = p1Entry?.custom || State.myCustom;
+    const isP1Me = p1Entry ? p1Entry.id === myId : State.controlMode === 'P1';
+
+    const p2Nick = p2Entry?.nickname || '2P 팔레트';
+    const p2Custom = p2Entry?.custom || State.p2DefaultCustom;
+    const isP2Me = p2Entry ? p2Entry.id === myId : State.controlMode === 'P2';
+
+    drawSignboardCard(p1RoleBoard, {
+      badgeTitle: '🎨 캔버스 · 현재 1P ▶',
+      nickname: p1Nick,
+      hatEmoji: getHatEmoji(p1Custom?.hat),
+      dotColor: p1Custom?.color || '#ec4899',
+      isMe: Boolean(isP1Me),
+      borderColor: '#f472b6',
+      headerBg: '#db2777'
+    });
+
+    drawSignboardCard(p2RoleBoard, {
+      badgeTitle: '🕹️ 팔레트 · 현재 2P ▶',
+      nickname: p2Nick,
+      hatEmoji: getHatEmoji(p2Custom?.hat),
+      dotColor: p2Custom?.color || '#06b6d4',
+      isMe: Boolean(isP2Me),
+      borderColor: '#22d3ee',
+      headerBg: '#0891b2'
+    });
+  }
+
+  function drawSignboardCard(board, info) {
+    const key = `${info.badgeTitle}|${info.nickname}|${info.hatEmoji}|${info.dotColor}|${info.isMe}`;
+    if (board.lastKey === key) return;
+    board.lastKey = key;
+
+    const { canvas, tex } = board;
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+
+    const x = 12, y = 12, w = canvas.width - 24, h = canvas.height - 24, r = 34;
+
+    // 1) 카드 배경
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+
+    c.fillStyle = 'rgba(26, 20, 46, 0.94)';
+    c.fill();
+    c.lineWidth = 7;
+    c.strokeStyle = info.borderColor;
+    c.stroke();
+
+    // 2) 상단 역할 헤더 필 배지
+    const hx = 28, hy = 26, hw = canvas.width - 56, hh = 50, hr = 22;
+    c.beginPath();
+    c.moveTo(hx + hr, hy);
+    c.lineTo(hx + hw - hr, hy);
+    c.quadraticCurveTo(hx + hw, hy, hx + hw, hy + hr);
+    c.lineTo(hx + hw, hy + hh - hr);
+    c.quadraticCurveTo(hx + hw, hy + hh, hx + hw - hr, hy + hh);
+    c.lineTo(hx + hr, hy + hh);
+    c.quadraticCurveTo(hx, hy + hh, hx, hy + hh - hr);
+    c.lineTo(hx, hy + hr);
+    c.quadraticCurveTo(hx, hy, hx + hr, hy);
+    c.closePath();
+    c.fillStyle = info.headerBg;
+    c.fill();
+
+    c.font = '900 28px Jua, Inter, Malgun Gothic, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = '#ffffff';
+    c.fillText(info.badgeTitle, canvas.width / 2, hy + hh / 2 + 2);
+
+    // 3) 하단 플레이어 컬러 도트 + 모자 아이콘 + 닉네임 + (나) 표시
+    const centerY = 132;
+    const meSuffix = info.isMe ? ' (나)' : '';
+    const displayText = `${info.hatEmoji} ${info.nickname}${meSuffix}`;
+
+    // 플레이어 커스텀 색상 원형 배지
+    c.beginPath();
+    c.arc(62, centerY, 18, 0, Math.PI * 2);
+    c.fillStyle = info.dotColor;
+    c.fill();
+    c.lineWidth = 4;
+    c.strokeStyle = '#ffffff';
+    c.stroke();
+
+    c.font = '900 36px Jua, Inter, Malgun Gothic, sans-serif';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillStyle = info.isMe ? '#fde047' : '#ffffff';
+    c.fillText(displayText, 94, centerY + 2);
+
+    tex.needsUpdate = true;
   }
 
   // 대기화면(Entry Screen) 내부 3D 캐릭터 프리뷰 캔버스 초기화
@@ -426,8 +601,8 @@ window.BanBan.Scene3D = (function () {
       return g;
     }
 
-    propsGroup.add(createGiantCrayon(0xf43f5e, 0xfb7185, -8.5, 1.5, 0.35));
-    propsGroup.add(createGiantCrayon(0x06b6d4, 0x38bdf8, -8.2, 4.2, -0.25));
+    propsGroup.add(createGiantCrayon(0xf43f5e, 0xfb7185, 8.6, -1.4, -0.35));
+    propsGroup.add(createGiantCrayon(0x06b6d4, 0x38bdf8, -8.5, 7.6, -0.25));
     propsGroup.add(createGiantCrayon(0xfacc15, 0xfde047, 8.5, 2.8, 2.75));
 
     // 2) 폭신폭신 3D 구름 & 파스텔 별 장식
@@ -660,6 +835,12 @@ window.BanBan.Scene3D = (function () {
     scene.add(p1Obj.group);
     scene.add(p2Obj.group);
 
+    // 공간 왼쪽 (캔버스 옆 = 현재 1P, 팔레트 옆 = 현재 2P) 3D 입체 표지판 생성
+    p1RoleBoard = createRoleSignboard('P1', -9.5, 2.2);
+    p2RoleBoard = createRoleSignboard('P2', -11.35, -6.8);
+    scene.add(p1RoleBoard.group);
+    scene.add(p2RoleBoard.group);
+
     // 대기화면용 프리뷰 캔버스도 함께 초기화
     const previewCanvasEl = document.getElementById('custom-preview-canvas');
     if (previewCanvasEl) {
@@ -675,6 +856,10 @@ window.BanBan.Scene3D = (function () {
 
   function updateYouMarkersVisibility() {
     if (!p1Obj || !p2Obj) return;
+    const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+    const myEntry = State.playerRoster.find(p => p.id === myId);
+    const myRole = myEntry?.role || 'P1';
+
     if (State.controlMode === 'P1') {
       p1Obj.youMarker.visible = true;
       p2Obj.youMarker.visible = false;
@@ -682,12 +867,13 @@ window.BanBan.Scene3D = (function () {
       p1Obj.youMarker.visible = false;
       p2Obj.youMarker.visible = true;
     } else if (State.controlMode === 'BOTH') {
-      p1Obj.youMarker.visible = true;
-      p2Obj.youMarker.visible = true;
+      p1Obj.youMarker.visible = myRole !== 'P2';
+      p2Obj.youMarker.visible = myRole === 'P2';
     } else {
       p1Obj.youMarker.visible = false;
       p2Obj.youMarker.visible = false;
     }
+    updateRoleSignboards();
   }
 
   function handleResize() {
@@ -1154,6 +1340,15 @@ window.BanBan.Scene3D = (function () {
   }
 
   function renderFrame(elapsedTime = 0, dtScale = 1) {
+    // 창 크기가 좁아도 캔버스 옆(1P)과 팔레트 옆(2P) 좌측 표지판이 화면 밖으로 잘리지 않게 클램핑 & 둥실둥실 애니메이션
+    if (camera && p1RoleBoard && p2RoleBoard) {
+      const minVisibleX = camera.position.x + camera.left + 2.35;
+      p1RoleBoard.group.position.x = Math.min(-8.4, Math.max(minVisibleX, p1RoleBoard.defaultX));
+      p2RoleBoard.group.position.x = Math.min(-10.2, Math.max(minVisibleX, p2RoleBoard.defaultX));
+      p1RoleBoard.sprite.position.y = 1.05 + Math.sin(elapsedTime * 3.2) * 0.06;
+      p2RoleBoard.sprite.position.y = 1.05 + Math.sin(elapsedTime * 3.2 + 1.2) * 0.06;
+    }
+
     if (renderer && scene && camera) {
       renderer.render(scene, camera);
     }
