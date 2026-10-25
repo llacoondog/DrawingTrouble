@@ -337,7 +337,7 @@ window.BanBan.Network = (function () {
         callbacks.onEndRound(true, data.winnerName, data.timeLeft, true);
       }
     } else if (data.type === 'NEXT_ROUND') {
-      if (typeof data.round === 'number' && data.round === State.currentRound && State.gameState !== 'ROUND_END') {
+      if (typeof data.round === 'number' && data.round <= State.currentRound && State.gameState !== 'ROUND_END') {
         return;
       }
       State.currentRound = data.round || (State.currentRound + 1);
@@ -350,6 +350,10 @@ window.BanBan.Network = (function () {
         renderPlayerRoster();
       } else {
         rotatePlayerRoles();
+      }
+      if (data.skipNotice) {
+        if (window.BanBan.Sound) window.BanBan.Sound.playTimeUp();
+        callbacks.onAddChatMessage('', data.skipNotice, 'system');
       }
       closeMultiModal();
       callbacks.onStartWordSelection(true, State.candidatePromptIndices);

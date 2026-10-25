@@ -536,6 +536,7 @@ function initGameApp() {
     wordModal.classList.add('flex');
 
     let choiceTimeLeft = 10;
+    const roundAtChoiceStart = State.currentRound;
     if (selectTimerEl) selectTimerEl.textContent = `${choiceTimeLeft}s`;
 
     wordChoiceInterval = setInterval(() => {
@@ -544,15 +545,59 @@ function initGameApp() {
         return;
       }
       choiceTimeLeft--;
-      if (selectTimerEl) selectTimerEl.textContent = `${choiceTimeLeft}s`;
+      if (selectTimerEl) selectTimerEl.textContent = `${Math.max(0, choiceTimeLeft)}s`;
+
+      if (choiceTimeLeft <= 3 && choiceTimeLeft > 0) {
+        if (Sound) Sound.playTick(true);
+      }
 
       if (choiceTimeLeft <= 0) {
         clearInterval(wordChoiceInterval);
         if (canIPick) {
-          confirmWordSelection(State.candidatePromptIndices[0]);
+          skipRoundOnWordTimeout();
+        } else if (State.isP2PConnected && State.isP2PHost) {
+          // 1P가 게스트이고 백그라운드 탭/잠수 상태로 인해 패킷이 오지 않을 때 방장이 대신 스킵 처리
+          setTimeout(() => {
+            if (State.gameState === 'CHOOSING_WORD' && State.currentRound === roundAtChoiceStart) {
+              skipRoundOnWordTimeout();
+            }
+          }, 800);
         }
       }
     }, 1000);
+  }
+
+  // 1P가 10초 안에 제시어를 고르지 않았을 때: 자동 스킵 + 역할 로테이션 + 다음 라운드로 이동
+  function skipRoundOnWordTimeout() {
+    if (State.gameState !== 'CHOOSING_WORD') return;
+    if (wordChoiceInterval) clearInterval(wordChoiceInterval);
+
+    const skippedRound = State.currentRound;
+    const prevP1 = State.playerRoster.find(p => p.role === 'P1');
+    const prevP1Name = prevP1?.nickname || '1P';
+
+    State.currentRound++;
+    const lastCand = State.candidatePromptIndices[State.candidatePromptIndices.length - 1] ?? State.currentPromptIndex;
+    State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(lastCand);
+
+    Network.rotatePlayerRoles();
+
+    const nextP1 = State.playerRoster.find(p => p.role === 'P1');
+    const nextP1Name = nextP1?.nickname || '1P';
+    const skipNotice = `⏩ ROUND ${skippedRound}: 1P(${prevP1Name})님이 시간 내에 단어를 고르지 않아 자동 스킵! 역할을 로테이션(새 1P: ${nextP1Name})하고 ROUND ${State.currentRound}(으)로 넘어갑니다!`;
+
+    if (Sound) Sound.playTimeUp();
+    addChatMessage('', skipNotice, 'system');
+
+    Network.sendNetworkPacket({
+      type: 'NEXT_ROUND',
+      round: State.currentRound,
+      candidateIndices: State.candidatePromptIndices,
+      roster: State.playerRoster,
+      skipNotice
+    });
+
+    startWordSelectionPhase(false, State.candidatePromptIndices);
   }
 
   function confirmWordSelection(chosenPromptIndex) {
