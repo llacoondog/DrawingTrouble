@@ -22,8 +22,10 @@ function getOrCreateRoom(roomCode) {
   if (!rooms.has(roomCode)) {
     rooms.set(roomCode, {
       code: roomCode,
-      status: 'WAITING', // 'WAITING' | 'CHOOSING_WORD' | 'PLAYING'
+      status: 'WAITING', // 'WAITING' | 'CHOOSING_WORD' | 'PLAYING' | 'GAME_OVER'
       round: 1,
+      turn: 1,
+      maxRounds: 3,
       promptIndex: 0,
       candidateIndices: [0, 1, 2],
       roster: []
@@ -78,6 +80,7 @@ io.on('connection', (socket) => {
       roomStatus: room.status,
       assignedRole,
       round: room.round,
+      turn: room.turn || 1,
       promptIndex: room.promptIndex,
       candidateIndices: room.candidateIndices || [0, 1, 2],
       roster: room.roster
@@ -107,6 +110,7 @@ io.on('connection', (socket) => {
       if (data.type === 'START_GAME') {
         room.status = 'CHOOSING_WORD';
         room.round = data.round || 1;
+        room.turn = data.turn || 1;
         room.candidateIndices = data.candidateIndices || [0, 1, 2];
         if (Array.isArray(data.roster)) room.roster = data.roster;
       } else if (data.type === 'WORD_SELECTED') {
@@ -117,7 +121,11 @@ io.on('connection', (socket) => {
       } else if (data.type === 'NEXT_ROUND') {
         room.status = 'CHOOSING_WORD';
         if (typeof data.round === 'number') room.round = data.round;
+        if (typeof data.turn === 'number') room.turn = data.turn;
         if (Array.isArray(data.candidateIndices)) room.candidateIndices = data.candidateIndices;
+        if (Array.isArray(data.roster)) room.roster = data.roster;
+      } else if (data.type === 'GAME_OVER') {
+        room.status = 'GAME_OVER';
         if (Array.isArray(data.roster)) room.roster = data.roster;
       } else if (data.type === 'ROSTER_SYNC' && Array.isArray(data.roster)) {
         room.roster = data.roster;

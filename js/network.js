@@ -22,6 +22,15 @@ window.BanBan.Network = (function () {
     onPauseForWaitingRoom: () => {},
     onOpenCustomizer: () => {},
     onSetMode: () => {},
+    onGameOver: () => {},
+    onUpdateRoundDisplay: () => {},
+    onSetGameMode: () => {},
+    onStartTeamGame: () => {},
+    onTeamSetup: () => {},
+    onTeamStartDraw: () => {},
+    onTeamStepFinish: () => {},
+    onTeamStartGuess: () => {},
+    onTeamRoundWin: () => {},
     normalizeAnswer: (s) => s.replace(/\s+/g, '').toLowerCase()
   };
 
@@ -42,6 +51,10 @@ window.BanBan.Network = (function () {
   function renderPlayerRoster() {
     // 3D 캐릭터(1P, 2P)에 로스터의 커스터마이징 외형 동기화
     Scene3D.syncRosterCustomizations();
+    // ☕ 하단 대기 라운지 관전자 / 대기자 3D 캐릭터 동기화
+    if (Scene3D.syncSpectatorCharacters) {
+      Scene3D.syncSpectatorCharacters(State.playerRoster);
+    }
 
     // 1) 우측 사이드바 플레이어 칩 렌더링
     const listEl = document.getElementById('player-list');
@@ -201,6 +214,105 @@ window.BanBan.Network = (function () {
         callbacks.onSetMode('P1', 'mode-p1');
       }
     }
+    updateCoopUIVisibility();
+  }
+
+  let coopToastTimer = null;
+  function showCoopToast(role, senderName, emoteId, pingLabel) {
+    const toastEl = document.getElementById('coop-toast');
+    const toastIcon = document.getElementById('coop-toast-icon');
+    const toastText = document.getElementById('coop-toast-text');
+    if (!toastEl || !toastText) return;
+
+    const roleTag = role === 'P2' ? '🕹️ 2P' : '🎨 1P';
+    const safeSender = escapeHtml(senderName || '파트너');
+
+    if (emoteId) {
+      const emote = (Config.COOP_EMOTES || []).find(e => e.id === emoteId);
+      const icon = emote ? emote.icon : '💬';
+      const text = emote ? emote.text : emoteId;
+      if (toastIcon) toastIcon.textContent = icon;
+      toastText.innerHTML = `<span class="text-pink-300 font-bold">[${roleTag} ${safeSender}]</span> <span class="text-white">${icon} ${text}</span>`;
+    } else if (pingLabel) {
+      if (toastIcon) toastIcon.textContent = '📍';
+      toastText.innerHTML = `<span class="text-sky-300 font-bold">[${roleTag} ${safeSender}]</span> <span class="text-white">${pingLabel}</span>`;
+    }
+
+    toastEl.classList.remove('hidden', 'coop-toast-active');
+    void toastEl.offsetWidth;
+    toastEl.classList.add('flex', 'coop-toast-active');
+
+    if (coopToastTimer) clearTimeout(coopToastTimer);
+    coopToastTimer = setTimeout(() => {
+      toastEl.classList.add('hidden');
+      toastEl.classList.remove('flex', 'coop-toast-active');
+    }, 2200);
+  }
+
+  function updateCoopUIVisibility() {
+    const bar = document.getElementById('coop-comm-bar');
+    if (!bar) return;
+    const isCoop = State.controlMode === 'P1' || State.controlMode === 'P2' || State.controlMode === 'BOTH';
+    if (isCoop && State.gameState === 'PLAYING') {
+      bar.classList.remove('hidden');
+      bar.classList.add('flex');
+    } else {
+      bar.classList.add('hidden');
+      bar.classList.remove('flex');
+    }
+  }
+
+  function sendCoopEmote(emoteId) {
+    const isCoop = State.controlMode === 'P1' || State.controlMode === 'P2' || State.controlMode === 'BOTH';
+    if (!isCoop || State.gameState !== 'PLAYING') return;
+
+    const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+    const me = State.playerRoster.find(p => p.id === myId);
+    let role = me?.role || 'P1';
+    if (State.controlMode === 'P2') role = 'P2';
+    else if (State.controlMode === 'P1') role = 'P1';
+
+    const senderName = me?.nickname || State.myNickname;
+    const packet = {
+      type: 'COOP_EMOTE',
+      role,
+      emoteId,
+      senderName,
+      senderId: myId
+    };
+
+    sendNetworkPacket(packet);
+    Scene3D.showCharacterEmote(role, emoteId);
+    if (window.BanBan.Sound) window.BanBan.Sound.playCoopEmote(emoteId);
+    showCoopToast(role, senderName, emoteId, null);
+  }
+
+  function sendCoopPing(x, z, label, isPad = false) {
+    const isCoop = State.controlMode === 'P1' || State.controlMode === 'P2' || State.controlMode === 'BOTH';
+    if (!isCoop || State.gameState !== 'PLAYING') return;
+
+    const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+    const me = State.playerRoster.find(p => p.id === myId);
+    let role = me?.role || 'P1';
+    if (State.controlMode === 'P2') role = 'P2';
+    else if (State.controlMode === 'P1') role = 'P1';
+
+    const senderName = me?.nickname || State.myNickname;
+    const packet = {
+      type: 'COOP_PING',
+      role,
+      x,
+      z,
+      label,
+      isPad,
+      senderName,
+      senderId: myId
+    };
+
+    sendNetworkPacket(packet);
+    Scene3D.spawnCoopPing(x, z, label, isPad);
+    if (window.BanBan.Sound) window.BanBan.Sound.playCoopPing(isPad);
+    showCoopToast(role, senderName, null, label);
   }
 
   function sendNetworkPacket(payload) {
@@ -272,7 +384,29 @@ window.BanBan.Network = (function () {
 
     const { p1Obj, p2Obj, drawCanvas } = Scene3D.getSceneObjects();
 
-    if (data.type === 'MOVE_P1' && State.controlMode !== 'P1') {
+    if (data.type === 'MOVE_SPECTATOR') {
+      const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+      if (data.id !== myId && Scene3D.updateSpectatorPosition) {
+        Scene3D.updateSpectatorPosition(data.id, data.x, data.z, data.y || 0, data.vx || 0, data.vz || 0, data.vy || 0);
+      }
+    } else if (data.type === 'SET_GAME_MODE') {
+      State.gameMode = data.mode || 'RELAY';
+      if (callbacks.onSetGameMode) callbacks.onSetGameMode(State.gameMode);
+    } else if (data.type === 'TEAM_SETUP') {
+      if (callbacks.onTeamSetup) callbacks.onTeamSetup(data);
+    } else if (data.type === 'TEAM_START_DRAW') {
+      if (callbacks.onTeamStartDraw) callbacks.onTeamStartDraw(data);
+    } else if (data.type === 'TEAM_DRAW_STROKE') {
+      if (Scene3D.paintStrokeOnTeamBoard) {
+        Scene3D.paintStrokeOnTeamBoard(data.room, data.x, data.z, data.prevX, data.prevZ, data.color, data.sizeIdx);
+      }
+    } else if (data.type === 'TEAM_STEP_FINISH') {
+      if (callbacks.onTeamStepFinish) callbacks.onTeamStepFinish(data);
+    } else if (data.type === 'TEAM_START_GUESS') {
+      if (callbacks.onTeamStartGuess) callbacks.onTeamStartGuess(data);
+    } else if (data.type === 'TEAM_ROUND_WIN') {
+      if (callbacks.onTeamRoundWin) callbacks.onTeamRoundWin(data);
+    } else if (data.type === 'MOVE_P1' && State.controlMode !== 'P1') {
       State.p1State.y = typeof data.y === 'number' ? data.y : 0;
       State.p1State.vy = typeof data.vy === 'number' ? data.vy : 0;
       p1Obj.group.position.set(data.x, State.p1State.y, data.z);
@@ -302,6 +436,8 @@ window.BanBan.Network = (function () {
       }
     } else if (data.type === 'START_GAME') {
       State.currentRound = data.round || 1;
+      State.currentTurn = data.turn || 1;
+      State.maxRounds = data.maxRounds || (Config.MAX_ROUNDS || 3);
       if (Array.isArray(data.candidateIndices)) {
         State.candidatePromptIndices = data.candidateIndices;
       }
@@ -311,6 +447,7 @@ window.BanBan.Network = (function () {
       applyMyRoleFromRoster();
       renderPlayerRoster();
       closeMultiModal();
+      if (callbacks.onUpdateRoundDisplay) callbacks.onUpdateRoundDisplay();
       const entryScreen = document.getElementById('entry-screen');
       if (entryScreen) entryScreen.classList.add('hidden');
       callbacks.onAddChatMessage('', `🚀 방장이 게임을 시작했습니다! 1P가 제시어를 고르면 라운드가 시작됩니다!`, 'system');
@@ -337,10 +474,12 @@ window.BanBan.Network = (function () {
         callbacks.onEndRound(true, data.winnerName, data.timeLeft, true);
       }
     } else if (data.type === 'NEXT_ROUND') {
-      if (typeof data.round === 'number' && data.round <= State.currentRound && State.gameState !== 'ROUND_END') {
+      if (typeof data.round === 'number' && data.round < State.currentRound && State.gameState !== 'ROUND_END') {
         return;
       }
-      State.currentRound = data.round || (State.currentRound + 1);
+      State.currentRound = data.round || State.currentRound;
+      State.currentTurn = data.turn || 1;
+      State.maxRounds = data.maxRounds || (Config.MAX_ROUNDS || 3);
       if (Array.isArray(data.candidateIndices)) {
         State.candidatePromptIndices = data.candidateIndices;
       }
@@ -351,17 +490,49 @@ window.BanBan.Network = (function () {
       } else {
         rotatePlayerRoles();
       }
+      if (callbacks.onUpdateRoundDisplay) callbacks.onUpdateRoundDisplay();
       if (data.skipNotice) {
         if (window.BanBan.Sound) window.BanBan.Sound.playTimeUp();
         callbacks.onAddChatMessage('', data.skipNotice, 'system');
       }
       closeMultiModal();
       callbacks.onStartWordSelection(true, State.candidatePromptIndices);
+    } else if (data.type === 'GAME_OVER') {
+      if (data.roster) {
+        State.playerRoster = data.roster;
+        renderPlayerRoster();
+      }
+      closeMultiModal();
+      if (callbacks.onGameOver) callbacks.onGameOver(data.roster);
     } else if (data.type === 'CLEAR') {
       Scene3D.clearCanvas();
       if (window.BanBan.Sound) window.BanBan.Sound.playClearCanvas();
       if (data.by) {
         callbacks.onAddChatMessage('', `💥 ${data.by}가 [도화지 지우기] 발판을 밟아 도화지를 초기화했습니다!`, 'system');
+      }
+    } else if (data.type === 'COOP_EMOTE') {
+      // 본인이 보낸 패킷은 로컬에서 즉시 연출했으므로 중복 방지
+      const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+      if (data.senderId && data.senderId === myId) return;
+
+      // 구경꾼(SPECTATOR)에게는 일절 노출하지 않음 (100% 비공개)
+      const isCoop = State.controlMode === 'P1' || State.controlMode === 'P2' || State.controlMode === 'BOTH';
+      if (isCoop && State.gameState === 'PLAYING') {
+        Scene3D.showCharacterEmote(data.role, data.emoteId);
+        if (window.BanBan.Sound) window.BanBan.Sound.playCoopEmote(data.emoteId);
+        showCoopToast(data.role, data.senderName, data.emoteId, null);
+      }
+    } else if (data.type === 'COOP_PING') {
+      // 본인이 보낸 패킷은 로컬에서 즉시 연출했으므로 중복 방지
+      const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+      if (data.senderId && data.senderId === myId) return;
+
+      // 구경꾼(SPECTATOR)에게는 일절 노출하지 않음 (100% 비공개)
+      const isCoop = State.controlMode === 'P1' || State.controlMode === 'P2' || State.controlMode === 'BOTH';
+      if (isCoop && State.gameState === 'PLAYING') {
+        Scene3D.spawnCoopPing(data.x, data.z, data.label, data.isPad);
+        if (window.BanBan.Sound) window.BanBan.Sound.playCoopPing(data.isPad);
+        showCoopToast(data.role, data.senderName, null, data.label);
       }
     } else if (data.type === 'ROSTER_SYNC') {
       State.playerRoster = data.roster || State.playerRoster;
@@ -412,6 +583,9 @@ window.BanBan.Network = (function () {
           State.isP2PConnected = true;
           State.isP2PHost = Boolean(data.isHost);
           State.currentRound = data.round || 1;
+          State.currentTurn = data.turn || 1;
+          State.maxRounds = data.maxRounds || (Config.MAX_ROUNDS || 3);
+          if (callbacks.onUpdateRoundDisplay) callbacks.onUpdateRoundDisplay();
           if (typeof data.promptIndex === 'number') {
             State.currentPromptIndex = data.promptIndex;
             State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
@@ -554,15 +728,30 @@ window.BanBan.Network = (function () {
     if (btnStartMpGame) {
       btnStartMpGame.addEventListener('click', () => {
         if (!State.isP2PHost) return;
+
+        // 👥 팀 모드일 경우 팀 모드 시작 루틴 실행
+        if (State.gameMode === 'TEAM') {
+          closeMultiModal();
+          if (callbacks.onStartTeamGame) {
+            callbacks.onStartTeamGame();
+          }
+          return;
+        }
+
         State.currentRound = 1;
+        State.currentTurn = 1;
+        State.maxRounds = Config.MAX_ROUNDS || 3;
         State.candidatePromptIndices = Config.pickThreeRandomPromptIndices(-1);
         applyMyRoleFromRoster();
         renderPlayerRoster();
         closeMultiModal();
+        if (callbacks.onUpdateRoundDisplay) callbacks.onUpdateRoundDisplay();
 
         sendNetworkPacket({
           type: 'START_GAME',
           round: State.currentRound,
+          turn: State.currentTurn,
+          maxRounds: State.maxRounds,
           candidateIndices: State.candidatePromptIndices,
           roster: State.playerRoster
         });
@@ -647,6 +836,8 @@ window.BanBan.Network = (function () {
             roomStatus: State.gameState,
             assignedRole,
             round: State.currentRound,
+            turn: State.currentTurn,
+            maxRounds: Config.MAX_ROUNDS || 3,
             promptIndex: State.currentPromptIndex,
             candidateIndices: State.candidatePromptIndices,
             roster: State.playerRoster,
@@ -743,6 +934,9 @@ window.BanBan.Network = (function () {
             if (data.peerId) State.myPeerId = data.peerId;
             State.isP2PHost = Boolean(data.isHost);
             State.currentRound = data.round || 1;
+            State.currentTurn = data.turn || 1;
+            State.maxRounds = data.maxRounds || (Config.MAX_ROUNDS || 3);
+            if (callbacks.onUpdateRoundDisplay) callbacks.onUpdateRoundDisplay();
             if (typeof data.promptIndex === 'number') {
               State.currentPromptIndex = data.promptIndex;
               State.currentPrompt = Config.WORD_POOL[State.currentPromptIndex % Config.WORD_POOL.length];
@@ -798,6 +992,9 @@ window.BanBan.Network = (function () {
     rotatePlayerRoles,
     applyMyRoleFromRoster,
     broadcastMyCustomization,
-    openMultiModal
+    openMultiModal,
+    sendCoopEmote,
+    sendCoopPing,
+    updateCoopUIVisibility
   };
 })();

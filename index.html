@@ -17,14 +17,23 @@
 </head>
 <body class="relative w-screen h-screen overflow-hidden">
 
+  <!-- 10초 이하 긴급 카운트다운 화면 비네트 펄스 오버레이 -->
+  <div id="urgent-vignette" class="pointer-events-none fixed inset-0 z-30 transition-opacity duration-300 opacity-0"></div>
+
   <!-- 3D 렌더링 컨테이너 -->
   <div id="canvas-container" class="absolute inset-0 z-0"></div>
 
   <!-- 상단 상태 표시바 -->
-  <div id="top-bar" class="absolute top-3 left-3 right-3 lg:right-[336px] z-10 flex flex-wrap items-center justify-between gap-2 bg-[#251d3a]/90 backdrop-blur-md px-4 py-2.5 rounded-3xl border-2 border-pink-400/30 shadow-2xl">
-    <div class="flex flex-wrap items-center gap-2.5">
-      <span id="round-text" class="bg-gradient-to-r from-pink-500 to-purple-500 px-3.5 py-1 rounded-2xl font-extrabold text-xs sm:text-sm tracking-wide shadow border border-white/20">🍓 ROUND 1</span>
-      <div id="timer-text" class="text-lg sm:text-xl font-black text-amber-300 bg-black/35 px-3.5 py-0.5 rounded-2xl min-w-[62px] text-center border border-white/10">60s</div>
+  <div id="top-bar" class="absolute top-3 left-3 right-3 lg:right-[336px] z-10 flex flex-wrap items-center justify-between gap-2 bg-[#251d3a]/92 backdrop-blur-md px-4 pt-2.5 pb-3.5 rounded-3xl border-2 border-pink-400/30 shadow-2xl overflow-hidden">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+      <span id="round-text" class="bg-gradient-to-r from-pink-500 to-purple-500 px-3.5 py-1 rounded-2xl font-extrabold text-xs sm:text-sm tracking-wide shadow border border-white/20">🍓 ROUND 1/3 (1/2)</span>
+      
+      <!-- 직관적인 타이머 뱃지 (아이콘 + 잔여 시간) -->
+      <div id="timer-badge" class="flex items-center gap-1.5 bg-black/40 px-2.5 py-0.5 rounded-2xl border border-emerald-400/30 shadow-inner transition-all duration-300">
+        <span id="timer-icon" class="text-xs sm:text-sm">⏳</span>
+        <span id="timer-text" class="text-sm sm:text-base font-black text-emerald-300 min-w-[36px] text-center tracking-tight transition-colors duration-300">60s</span>
+      </div>
+
       <div id="prompt-text" class="text-sm sm:text-base font-extrabold text-yellow-200 px-1 drop-shadow">제시어: (대기실 준비 중...)</div>
     </div>
 
@@ -39,10 +48,15 @@
         <div id="color-preview" class="w-4 h-4 rounded-full border-2 border-white shadow-sm" style="background: transparent;"></div>
         <span id="color-name" class="text-white">발판 대기</span>
       </div>
-      <!-- 현재 붓 굵기 단계 -->
-      <div class="flex items-center gap-1.5 bg-purple-500/25 px-3 py-1 rounded-2xl text-xs font-bold border border-purple-300/40">
-        <span class="text-purple-200">🖌️ 굵기:</span>
-        <span id="brush-size-name" class="text-yellow-200 font-extrabold">기본붓 (중)</span>
+      <!-- 세분화된 브러쉬 크기 선택 버튼 바 (현재 크기는 초록색 버튼으로 점등!) -->
+      <div class="flex items-center gap-1 bg-black/40 px-2 py-1 rounded-2xl border border-white/15">
+        <span class="text-purple-200 text-xs font-bold mr-1 hidden sm:inline">🖌️ 굵기:</span>
+        <div id="brush-size-buttons" class="flex items-center gap-1">
+          <button type="button" data-size="0" class="brush-size-btn px-2.5 py-0.5 rounded-xl text-xs font-extrabold transition">소</button>
+          <button type="button" data-size="1" class="brush-size-btn px-2.5 py-0.5 rounded-xl text-xs font-extrabold transition">중</button>
+          <button type="button" data-size="2" class="brush-size-btn px-2.5 py-0.5 rounded-xl text-xs font-extrabold transition">대</button>
+          <button type="button" data-size="3" class="brush-size-btn px-2.5 py-0.5 rounded-xl text-xs font-extrabold transition">특대</button>
+        </div>
       </div>
       <!-- 효과음 ON/OFF 토글 버튼 -->
       <button id="btn-sound-toggle" class="bg-indigo-900/80 hover:bg-indigo-800 text-amber-300 text-xs font-extrabold px-3 py-1.5 rounded-2xl transition shadow border border-indigo-400/30 flex items-center gap-1" title="효과음 켜기/끄기">
@@ -57,6 +71,13 @@
         <span>🎪 멀티 대기방</span>
       </button>
     </div>
+
+    <!-- 하단 실시간 타임 프로그레스 게이지 바 -->
+    <div id="timer-bar-track" class="absolute bottom-0 left-0 right-0 h-1.5 bg-black/50 overflow-hidden">
+      <!-- 20초 힌트 지점 마커 (전체 60초 중 20초 남은 33.33% 지점) -->
+      <div class="absolute bottom-0 left-[33.33%] w-1 h-full bg-amber-300 z-10 shadow-[0_0_6px_rgba(252,211,77,0.8)]" title="20초: 글자 수 힌트 공개!"></div>
+      <div id="timer-progress-bar" class="h-full w-full bg-gradient-to-r from-teal-400 to-emerald-400 transition-all duration-300 ease-linear shadow-[0_0_8px_rgba(52,211,153,0.6)]"></div>
+    </div>
   </div>
 
   <!-- 🐾 발판 밟음 실시간 빅 배너 (무슨 버튼을 밟고 있는지 한눈에 표시!) -->
@@ -69,6 +90,16 @@
     <span id="pad-toast-dot" class="w-4 h-4 rounded-full border-2 border-white shadow-inner hidden"></span>
     <span id="pad-toast-text" class="text-white drop-shadow">빨강 발판 밟는 중!</span>
     <span id="pad-toast-sub" class="text-xs px-2.5 py-0.5 rounded-full bg-black/30 text-yellow-200">펜 ON</span>
+  </div>
+
+  <!-- 🤫 1P ↔ 2P 비밀 협동 신호/핑 알림 토스트 (구경꾼에게는 100% 비공개!) -->
+  <div
+    id="coop-toast"
+    class="pointer-events-none fixed top-[174px] sm:top-[170px] left-1/2 lg:left-[calc(50%-160px)] -translate-x-1/2 z-20 hidden items-center gap-2 px-4 py-1.5 rounded-full border border-pink-400/60 shadow-2xl text-xs sm:text-sm font-black tracking-wide backdrop-blur-md transition-all duration-300"
+    style="background: rgba(28, 14, 42, 0.95);"
+  >
+    <span id="coop-toast-icon" class="text-base sm:text-lg">🤫</span>
+    <span id="coop-toast-text" class="text-pink-100 drop-shadow">[1P의 신호] 🛑 잠깐 멈춰!</span>
   </div>
 
   <!-- 좌측 상단 조작 모드 스위처 -->
@@ -112,6 +143,32 @@
     <div class="text-purple-200 mt-1 font-semibold">
       🖌️ <b>역할 표시 & 굵기:</b> 공간 왼쪽에서 <b>현재 1P·2P</b>를 확인하세요! (동시 조작 시 방향키로 보조 캐릭터 조작 가능)
     </div>
+    <div class="text-amber-200 mt-1 font-semibold flex items-center gap-1 flex-wrap">
+      <span>🤫 <b>1P·2P 비밀 신호:</b></span>
+      <kbd class="bg-black/40 border border-white/20 text-white px-1 py-0.2 rounded font-bold">1</kbd>~<kbd class="bg-black/40 border border-white/20 text-white px-1 py-0.2 rounded font-bold">6</kbd>
+      <span>(이모티콘) / <b>우클릭</b> (발판·도화지 핑)</span>
+    </div>
+  </div>
+
+  <!-- 🤫 1P ↔ 2P 비밀 통신 핫바 (1P / 2P 조작 시에만 활성화되며 구경꾼 시점에서는 완전 숨김) -->
+  <div
+    id="coop-comm-bar"
+    class="fixed bottom-3 left-1/2 -translate-x-1/2 lg:left-[calc(50%-160px)] z-20 flex items-center gap-1 sm:gap-1.5 bg-[#181126]/95 backdrop-blur-xl px-2.5 sm:px-3 py-1.5 rounded-2xl border-2 border-pink-500/50 shadow-2xl max-w-[96vw] overflow-x-auto transition-all"
+  >
+    <div class="flex items-center gap-1 text-[11px] font-black text-pink-300 pr-1.5 border-r border-white/10 select-none whitespace-nowrap">
+      <span>🤫 1P·2P 비밀신호</span>
+    </div>
+    <!-- 1~6번 이모티콘 버튼 컨테이너 -->
+    <div id="coop-emote-buttons" class="flex items-center gap-1"></div>
+    <!-- 핑 버튼 (모바일 터치용 및 PC 우클릭 가이드) -->
+    <button
+      id="btn-coop-ping-mode"
+      type="button"
+      class="flex items-center gap-1 text-[11px] font-extrabold bg-sky-600/70 hover:bg-sky-500 text-sky-100 px-2.5 py-1 rounded-xl border border-sky-400/40 shadow transition whitespace-nowrap"
+      title="발판이나 도화지를 우클릭(또는 클릭)하여 핑을 찍으세요!"
+    >
+      <span>📍 핑 찍기</span>
+    </button>
   </div>
 
   <!-- 우측 실시간 채팅 & 스코어 사이드바 -->
@@ -141,7 +198,7 @@
       <input
         type="text"
         id="chat-input"
-        placeholder="정답을 입력해 맞혀보세요!"
+        placeholder="[Enter] 눌러 정답 입력 (이동 멈춤)"
         autocomplete="off"
         class="flex-1 bg-[#1a1d28] border border-white/15 focus:border-indigo-500 text-white px-3 py-2 rounded-xl text-xs sm:text-sm outline-none transition"
       />
@@ -149,6 +206,38 @@
         전송
       </button>
     </div>
+    <!-- Enter 상태 & 이동 가이드 안내 바 -->
+    <div class="px-3 py-1.5 bg-black/40 flex items-center justify-between text-[11px] border-t border-white/5 select-none">
+      <span id="chat-focus-status" class="text-emerald-400 font-bold flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>🏃 이동 모드 (Enter 눌러 채팅)</span>
+      </span>
+      <span class="text-[10px] text-slate-400">Enter / ESC</span>
+    </div>
+  </div>
+
+  <!-- 👀 깍두기 전용 자유 관전 룸 전환 툴바 (홀수 인원 시 활성화) -->
+  <div
+    id="kkaktugi-bar"
+    class="fixed top-[74px] right-3 lg:right-[336px] z-20 hidden items-center gap-1.5 bg-[#1f1738]/95 backdrop-blur-md px-3 py-1.5 rounded-2xl border-2 border-amber-400/50 shadow-2xl transition-all"
+  >
+    <div class="flex items-center gap-1 text-xs font-black text-amber-300 pr-1.5 border-r border-white/10 select-none">
+      <span>👀 깍두기 관전:</span>
+    </div>
+    <button
+      id="btn-kkaktugi-view-a"
+      type="button"
+      class="px-2.5 py-1 rounded-xl text-xs font-black transition bg-pink-600 text-white shadow hover:bg-pink-500"
+    >
+      🍓 A팀 작업실
+    </button>
+    <button
+      id="btn-kkaktugi-view-b"
+      type="button"
+      class="px-2.5 py-1 rounded-xl text-xs font-black transition bg-slate-800 text-slate-300 border border-white/10 hover:bg-slate-700"
+    >
+      ☁️ B팀 작업실
+    </button>
   </div>
 
   <!-- ✨ 최초 접속 대기화면 & 3D 캐릭터 커스터마이징 로비 모달 -->
@@ -264,7 +353,89 @@
           📥 PNG 저장
         </button>
         <button id="btn-next-round" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-lg">
-          다음 라운드 ▶
+          다음 차례 ▶
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🏆 최종 게임 종료 & 랭킹 리더보드 모달 (3라운드 완료 시) -->
+  <div id="final-leaderboard-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+    <div class="modal-pop bg-[#1a1c29] border-2 border-amber-400/40 rounded-3xl p-6 sm:p-8 text-center max-w-md w-full shadow-[0_0_50px_rgba(251,191,36,0.25)] relative overflow-hidden">
+      <!-- 배경 축하 데코 레이어 -->
+      <div class="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+      <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-pink-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+      <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-pink-500/20 border border-amber-400/30 px-3.5 py-1 rounded-full text-xs font-black text-amber-300 mb-2">
+        <span>👑 GAME CLEAR</span>
+        <span class="text-slate-400">•</span>
+        <span>총 3라운드 완주</span>
+      </div>
+
+      <h2 class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-pink-400 to-purple-300 mb-1">
+        🏆 최종 시상식 & 순위
+      </h2>
+      <p id="final-mvp-text" class="text-xs sm:text-sm text-slate-300 mb-4">
+        모든 참가자가 3바퀴를 모두 돌았습니다! 영광의 우승자는?
+      </p>
+
+      <!-- 최종 랭킹 순위표 리스트 -->
+      <div id="final-roster-list" class="space-y-2 max-h-60 overflow-y-auto pr-1 mb-5">
+        <!-- JS 동적 생성 -->
+      </div>
+
+      <!-- 모달 하단 액션 버튼들 -->
+      <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
+        <button id="btn-final-to-lobby" class="flex-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition border border-white/10 flex items-center justify-center gap-1.5">
+          <span>🎪 대기방으로 돌아가기</span>
+        </button>
+        <button id="btn-final-restart" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-95 text-slate-950 font-black py-3 px-4 rounded-xl text-xs sm:text-sm transition shadow-lg flex items-center justify-center gap-1.5">
+          <span>🔄 새 게임 시작 (1R부터)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 👥 팀 모드 최종 시상식 & 결과 비교 모달 -->
+  <div id="team-result-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+    <div class="modal-pop bg-[#1a1c29] border-2 border-pink-400/50 rounded-3xl p-6 sm:p-8 text-center max-w-lg w-full shadow-[0_0_50px_rgba(236,72,153,0.3)] relative overflow-hidden">
+      <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-pink-500/20 to-cyan-500/20 border border-pink-400/40 px-3.5 py-1 rounded-full text-xs font-black text-pink-300 mb-2">
+        <span>👥 TEAM MATCH RESULT</span>
+        <span class="text-slate-400">•</span>
+        <span>2인 팀 대항전 종료</span>
+      </div>
+
+      <h2 id="team-winner-title" class="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-amber-300 to-cyan-300 mb-2">
+        🏆 A팀 승리!
+      </h2>
+      <p id="team-winner-sub" class="text-xs sm:text-sm text-slate-300 mb-5">
+        서로의 움직임 리플레이를 보고 퀴즈를 가장 많이 맞힌 팀입니다!
+      </p>
+
+      <!-- 양 팀 점수 비교 카드 -->
+      <div class="grid grid-cols-2 gap-3 mb-5">
+        <div id="card-team-a" class="p-4 rounded-2xl bg-pink-950/40 border-2 border-pink-500/50 flex flex-col items-center">
+          <span class="text-xs font-extrabold text-pink-300 mb-1">🍓 A팀 (체리 핑크)</span>
+          <div id="team-a-final-score" class="text-2xl sm:text-3xl font-black text-pink-400 my-1">0점</div>
+          <div id="team-a-members-list" class="text-[11px] text-slate-300"></div>
+        </div>
+        <div id="card-team-b" class="p-4 rounded-2xl bg-cyan-950/40 border-2 border-cyan-500/50 flex flex-col items-center">
+          <span class="text-xs font-extrabold text-cyan-300 mb-1">☁️ B팀 (소다 시안)</span>
+          <div id="team-b-final-score" class="text-2xl sm:text-3xl font-black text-cyan-400 my-1">0점</div>
+          <div id="team-b-members-list" class="text-[11px] text-slate-300"></div>
+        </div>
+      </div>
+
+      <div id="kkaktugi-notice" class="hidden text-xs text-amber-300 bg-amber-500/10 border border-amber-400/30 rounded-xl px-3 py-2 mb-4">
+        ✨ 깍두기 관전자는 두 방을 자유롭게 넘나들며 즐겁게 응원해주었습니다!
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
+        <button id="btn-team-to-lobby" class="flex-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition border border-white/10 flex items-center justify-center gap-1.5">
+          <span>🎪 대기방으로 돌아가기</span>
+        </button>
+        <button id="btn-team-restart" class="flex-1 bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-400 hover:to-indigo-400 active:scale-95 text-white font-black py-3 px-4 rounded-xl text-xs sm:text-sm transition shadow-lg flex items-center justify-center gap-1.5">
+          <span>🔄 팀 모드 새 게임 시작</span>
         </button>
       </div>
     </div>
@@ -338,11 +509,30 @@
             </div>
             <div id="waiting-player-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1"></div>
           </div>
+
+          <!-- 🎮 게임 모드 선택 (방장이 변경하면 전원 실시간 동기화) -->
+          <div class="border-t border-white/10 pt-2.5 mt-2">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-bold text-slate-300">🎮 게임 모드 선택</span>
+              <span id="current-mode-badge" class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/40">🏃‍♂️ 릴레이 모드</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <button id="btn-mode-relay" type="button" class="mode-select-btn bg-pink-600 text-white border-2 border-pink-400 py-2 px-2.5 rounded-xl text-xs font-extrabold transition shadow flex items-center justify-center gap-1">
+                <span>🏃‍♂️ 릴레이 모드</span>
+              </button>
+              <button id="btn-mode-team" type="button" class="mode-select-btn bg-[#181d2a] hover:bg-slate-700 text-slate-300 border border-white/10 py-2 px-2.5 rounded-xl text-xs font-bold transition shadow flex items-center justify-center gap-1">
+                <span>👥 팀 모드 (2인전)</span>
+              </button>
+            </div>
+            <p id="mode-explain-text" class="text-[11px] text-slate-400 leading-relaxed bg-black/25 p-2 rounded-xl border border-white/5">
+              <b>🏃‍♂️ 릴레이 모드:</b> 플레이어가 한 번씩 로테이션해가며 라운드를 진행하고 최종 점수를 비교합니다.
+            </p>
+          </div>
         </div>
 
         <!-- 방장용 게임 시작 버튼 / 게스트용 대기 안내 -->
         <button id="btn-start-mp-game" class="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black py-3.5 px-4 rounded-2xl text-sm shadow-xl transition mb-2">
-          🎮 게임 시작! (모두 함께 ROUND 1 출발)
+          🎮 게임 시작! (총 3라운드 출발)
         </button>
         <div id="waiting-guest-notice" class="hidden w-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-200 font-bold py-3 px-4 rounded-2xl text-xs text-center mb-2">
           ⏳ 방장이 [게임 시작]을 누르면 동시에 라운드가 시작됩니다...

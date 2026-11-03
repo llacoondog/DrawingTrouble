@@ -13,6 +13,16 @@ window.BanBan.Scene3D = (function () {
   const paintDroplets = [];
   const padRipples = [];
   const confettiParticles = [];
+  const coopPings = [];
+
+  // 관전자 / 대기자 3D 캐릭터 맵 (peerId -> charObj)
+  const spectatorChars = new Map();
+  let waitingLoungeMesh = null;
+
+  // 👥 팀 모드용 독립 도화지 캔버스 & 텍스처 (팀 A, 팀 B 서브룸)
+  let teamCanvasA = null, teamCtxA = null, teamTextureA = null;
+  let teamCanvasB = null, teamCtxB = null, teamTextureB = null;
+  let activeBoardRoom = 'MAIN'; // 'MAIN' | 'teamA' | 'teamB'
 
   // 대기화면 전용 3D 캐릭터 클로즈업 프리뷰 씬
   let previewScene = null;
@@ -28,6 +38,9 @@ window.BanBan.Scene3D = (function () {
   const rippleGeo = new THREE.RingGeometry(0.75, 0.95, 28);
   rippleGeo.rotateX(-Math.PI / 2);
   const confettiGeo = new THREE.BoxGeometry(0.28, 0.08, 0.28);
+  const pingRingGeo = new THREE.RingGeometry(0.3, 0.55, 32);
+  pingRingGeo.rotateX(-Math.PI / 2);
+  const pingColumnGeo = new THREE.CylinderGeometry(0.04, 0.22, 2.0, 16);
 
   // 2D 캔버스 텍스트 스프라이트 생성 헬퍼
   function createTextSprite(text, bgColor, textColor, borderColor, scaleWidth = 2.1, scaleHeight = 0.65) {
@@ -74,15 +87,26 @@ window.BanBan.Scene3D = (function () {
     return sprite;
   }
 
+  // 닉네임 태그 스프라이트 생성 헬퍼
+  function createNameTagSprite(name, isMe = false, roleTag = '') {
+    const bg = isMe ? 'rgba(236, 72, 153, 0.94)' : 'rgba(30, 41, 59, 0.88)';
+    const border = isMe ? '#fbcfe8' : '#94a3b8';
+    const text = roleTag ? `[${roleTag}] ${name}` : name;
+    const sprite = createTextSprite(text, bg, '#ffffff', border, 2.0, 0.52);
+    sprite.position.set(0, 2.32, 0);
+    return sprite;
+  }
+
   // 캐릭터 머리 위 상단 'YOU' + 입체 화살표(▼) 마커 생성
   function createYouMarker(roleType) {
     const markerGroup = new THREE.Group();
     markerGroup.position.set(0, 2.52, 0);
 
     const isP1 = roleType === 'P1';
-    const badgeColor = isP1 ? '#ec4899' : '#06b6d4';
-    const coneColor = isP1 ? 0xf472b6 : 0x22d3ee;
-    const labelText = isP1 ? 'YOU (1P)' : 'YOU (2P)';
+    const isP2 = roleType === 'P2';
+    const badgeColor = isP1 ? '#ec4899' : isP2 ? '#06b6d4' : '#8b5cf6';
+    const coneColor = isP1 ? 0xf472b6 : isP2 ? 0x22d3ee : 0xa78bfa;
+    const labelText = isP1 ? 'YOU (1P)' : isP2 ? 'YOU (2P)' : 'YOU (대기)';
 
     const sprite = createTextSprite(labelText, badgeColor, '#ffffff', '#ffffff', 1.85, 0.58);
     sprite.position.set(0, 0.42, 0);
@@ -649,8 +673,9 @@ window.BanBan.Scene3D = (function () {
     camera = new THREE.OrthographicCamera(
       -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 1, 1000
     );
-    camera.position.set(1.6, 18, 16);
-    camera.lookAt(1.6, 0, -0.6);
+    // 상단 데크부터 중앙 도화지, 하단 대기 라운지까지 전체 시야를 고르게 포착
+    camera.position.set(0.6, 20, 17.8);
+    camera.lookAt(0.6, 0, 1.2);
 
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -669,19 +694,34 @@ window.BanBan.Scene3D = (function () {
     dirLight.position.set(10, 25, 15);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.set(1024, 1024);
-    dirLight.shadow.camera.left = -15;
-    dirLight.shadow.camera.right = 15;
-    dirLight.shadow.camera.top = 15;
-    dirLight.shadow.camera.bottom = -15;
+    dirLight.shadow.camera.left = -16;
+    dirLight.shadow.camera.right = 16;
+    dirLight.shadow.camera.top = 16;
+    dirLight.shadow.camera.bottom = -16;
     scene.add(dirLight);
 
-    // 동적 1024x1024 2D CanvasTexture 바닥 생성
+    // 동적 1024x1024 2D CanvasTexture 메인 바닥 생성
     drawCanvas = document.createElement('canvas');
     drawCanvas.width = 1024;
     drawCanvas.height = 1024;
     ctx = drawCanvas.getContext('2d');
     canvasTexture = new THREE.CanvasTexture(drawCanvas);
     clearCanvas();
+
+    // 👥 팀 모드용 독립 서브룸 캔버스 2종 (A팀 / B팀)
+    teamCanvasA = document.createElement('canvas');
+    teamCanvasA.width = 1024;
+    teamCanvasA.height = 1024;
+    teamCtxA = teamCanvasA.getContext('2d');
+    teamTextureA = new THREE.CanvasTexture(teamCanvasA);
+
+    teamCanvasB = document.createElement('canvas');
+    teamCanvasB.width = 1024;
+    teamCanvasB.height = 1024;
+    teamCtxB = teamCanvasB.getContext('2d');
+    teamTextureB = new THREE.CanvasTexture(teamCanvasB);
+    clearTeamCanvas('teamA');
+    clearTeamCanvas('teamB');
 
     // 중앙 12x12 도화지 보드
     const CANVAS_SIZE = Config.CANVAS_SIZE;
@@ -734,75 +774,92 @@ window.BanBan.Scene3D = (function () {
     // 화실 주변 귀여운 소품 배치
     addCuteStudioProps();
 
-    // 상단 2P 파스텔 컨트롤 데크
+    // 상단 2P 파스텔 컨트롤 데크 (2열 10색 팔레트 지원)
     const controlDeck = new THREE.Mesh(
-      new THREE.BoxGeometry(17.8, 0.6, 4.6),
+      new THREE.BoxGeometry(20.8, 0.6, 5.2),
       new THREE.MeshToonMaterial({ color: 0x3b2d5e })
     );
-    controlDeck.position.set(0.2, -0.3, -6.8);
+    controlDeck.position.set(0.0, -0.3, -6.8);
     controlDeck.receiveShadow = true;
     scene.add(controlDeck);
 
     // 컨트롤 데크 핑크 테두리 라인
     const deckRim = new THREE.Mesh(
-      new THREE.BoxGeometry(18.0, 0.14, 4.8),
+      new THREE.BoxGeometry(21.0, 0.14, 5.4),
       new THREE.MeshToonMaterial({ color: 0xf472b6 })
     );
-    deckRim.position.set(0.2, -0.05, -6.8);
+    deckRim.position.set(0.0, -0.05, -6.8);
     scene.add(deckRim);
 
     // 색상/굵기 발판 구역과 우측 멀리 떨어진 [도화지 지우기] 구역 사이 경고 분리선
     const dividerLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.20, 0.06, 4.0),
+      new THREE.BoxGeometry(0.20, 0.06, 4.6),
       new THREE.MeshBasicMaterial({ color: 0xfde047 })
     );
-    dividerLine.position.set(5.55, 0.03, -6.8);
+    dividerLine.position.set(6.3, 0.03, -6.6);
     scene.add(dividerLine);
 
     // 컨트롤 데크 위 원통형 젤리 압력 버튼(Pressure Pads) 및 큼직한 라벨 생성
     Config.PADS_DATA.forEach(data => {
       const isClearPad = data.type === 'clear';
       const isSizePad = data.type === 'size';
+      const isActiveSize = isSizePad && (State.brushSizeIdx === data.sizeIdx);
+
+      const ringColor = isClearPad
+        ? 0xfbbf24
+        : isSizePad
+          ? (isActiveSize ? 0x34d399 : 0x475569)
+          : 0xffffff;
+
       const ringMat = new THREE.MeshStandardMaterial({
-        color: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0xffffff,
+        color: ringColor,
         roughness: 0.3,
         metalness: 0.2,
-        emissive: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0x000000,
-        emissiveIntensity: 0.15
+        emissive: isClearPad ? 0xfbbf24 : isSizePad ? (isActiveSize ? 0x10b981 : 0x000000) : 0x000000,
+        emissiveIntensity: isClearPad ? 0.25 : isSizePad && isActiveSize ? 0.35 : 0.15
       });
+      const ringRTop = isClearPad ? 1.05 : isSizePad ? 0.64 : 0.68;
+      const ringRBot = isClearPad ? 1.12 : isSizePad ? 0.70 : 0.74;
       const baseRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 1.14 : 0.95, isClearPad ? 1.20 : 1.02, 0.12, 28),
+        new THREE.CylinderGeometry(ringRTop, ringRBot, 0.12, 28),
         ringMat
       );
       baseRing.position.set(data.x, 0.05, data.z);
       baseRing.receiveShadow = true;
       scene.add(baseRing);
 
+      const padColor = isSizePad
+        ? (isActiveSize ? 0x10b981 : 0x334155)
+        : data.color;
+
       const padMat = new THREE.MeshStandardMaterial({
-        color: data.color,
+        color: padColor,
         roughness: 0.2,
         metalness: 0.08,
-        emissive: data.color,
-        emissiveIntensity: isClearPad ? 0.32 : isSizePad ? 0.26 : 0.16
+        emissive: padColor,
+        emissiveIntensity: isClearPad ? 0.32 : isSizePad ? (isActiveSize ? 0.45 : 0.12) : 0.16
       });
+      const padRTop = isClearPad ? 0.88 : isSizePad ? 0.50 : 0.54;
+      const padRBot = isClearPad ? 0.94 : isSizePad ? 0.56 : 0.60;
       const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(isClearPad ? 0.94 : 0.80, isClearPad ? 1.00 : 0.86, 0.28, 28),
+        new THREE.CylinderGeometry(padRTop, padRBot, 0.28, 28),
         padMat
       );
       pad.position.set(data.x, 0.15, data.z);
       pad.receiveShadow = true;
       pad.castShadow = true;
+      pad.userData = { padData: data };
       scene.add(pad);
 
       const labelBg = isClearPad
         ? 'rgba(190, 18, 60, 0.95)'
         : isSizePad
-          ? 'rgba(107, 33, 168, 0.95)'
+          ? (isActiveSize ? 'rgba(5, 150, 105, 0.95)' : 'rgba(30, 41, 59, 0.90)')
           : 'rgba(30, 27, 75, 0.90)';
-      const labelColor = isClearPad ? '#fef08a' : isSizePad ? '#f3e8ff' : '#ffffff';
-      const labelBorder = isClearPad ? '#fda4af' : isSizePad ? '#d8b4fe' : '#f472b6';
-      const baseScaleW = isClearPad ? 2.15 : isSizePad ? 1.75 : 1.48;
-      const baseScaleH = isClearPad ? 0.56 : isSizePad ? 0.50 : 0.46;
+      const labelColor = isClearPad ? '#fef08a' : isSizePad ? '#ffffff' : '#ffffff';
+      const labelBorder = isClearPad ? '#fda4af' : isSizePad ? (isActiveSize ? '#6ee7b7' : '#64748b') : '#f472b6';
+      const baseScaleW = isClearPad ? 2.05 : isSizePad ? 1.25 : 1.30;
+      const baseScaleH = isClearPad ? 0.52 : isSizePad ? 0.44 : 0.44;
 
       const labelSprite = createTextSprite(
         data.label,
@@ -812,8 +869,8 @@ window.BanBan.Scene3D = (function () {
         baseScaleW,
         baseScaleH
       );
-      // 2P 캐릭터 몸통에 가려지지 않도록 버튼 앞쪽(z + 1.02)에 배치
-      labelSprite.position.set(data.x, 0.52, data.z + 1.02);
+      // 2P 캐릭터 몸통에 가려지지 않도록 버튼 앞쪽(z + 0.76)에 배치
+      labelSprite.position.set(data.x, 0.50, data.z + 0.76);
       scene.add(labelSprite);
 
       padMeshes.push({
@@ -823,11 +880,55 @@ window.BanBan.Scene3D = (function () {
         labelSprite,
         baseScaleW,
         baseScaleH,
-        defaultRingColor: isClearPad ? 0xfbbf24 : isSizePad ? 0xc084fc : 0xffffff,
+        defaultRingColor: ringColor,
         data,
         wasStepped: false
       });
     });
+
+    // ☕ 하단 대기 & 관전 라운지 (플레이어 자유 이동 광장)
+    waitingLoungeMesh = new THREE.Group();
+    const loungeFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(20.4, 0.45, 4.4),
+      new THREE.MeshToonMaterial({ color: 0x332554 })
+    );
+    loungeFloor.position.set(0, -0.22, 11.2);
+    loungeFloor.receiveShadow = true;
+    waitingLoungeMesh.add(loungeFloor);
+
+    // 라운지 테두리 네온 림
+    const loungeRim = new THREE.Mesh(
+      new THREE.BoxGeometry(20.6, 0.12, 4.6),
+      new THREE.MeshToonMaterial({ color: 0x8b5cf6 })
+    );
+    loungeRim.position.set(0, 0.02, 11.2);
+    waitingLoungeMesh.add(loungeRim);
+
+    // 라운지 후방 파스텔 가드레일 기둥들
+    const postMat = new THREE.MeshToonMaterial({ color: 0xfbbf24 });
+    [-9.6, -4.8, 0, 4.8, 9.6].forEach(px => {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.85, 12), postMat);
+      p.position.set(px, 0.38, 13.2);
+      p.castShadow = true;
+      waitingLoungeMesh.add(p);
+    });
+    const railMat = new THREE.MeshToonMaterial({ color: 0xf472b6 });
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.10, 0.14), railMat);
+    rail.position.set(0, 0.65, 13.2);
+    waitingLoungeMesh.add(rail);
+
+    // 라운지 중앙 귀여운 네온 표지판 스프라이트
+    const loungeSign = createTextSprite(
+      '☕ 대기 & 관전 라운지 (자유 이동 광장)',
+      'rgba(76, 29, 149, 0.92)',
+      '#fef08a',
+      '#c084fc',
+      3.4,
+      0.65
+    );
+    loungeSign.position.set(0, 1.35, 13.2);
+    waitingLoungeMesh.add(loungeSign);
+    scene.add(waitingLoungeMesh);
 
     // 1P 브러시 러너, 2P 팔레트 엔지니어 생성 및 커스터마이징 적용
     p1Obj = createJellyCharacter(State.myCustom.color, 'P1', State.myCustom);
@@ -888,15 +989,191 @@ window.BanBan.Scene3D = (function () {
     if (renderer) renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
+  function clearCanvasContext(targetCtx, targetTex) {
+    if (!targetCtx) return;
+    targetCtx.fillStyle = '#ffffff';
+    targetCtx.fillRect(0, 0, 1024, 1024);
+    targetCtx.strokeStyle = '#e2e8f0';
+    targetCtx.lineWidth = 10;
+    targetCtx.strokeRect(5, 5, 1014, 1014);
+    if (targetTex) targetTex.needsUpdate = true;
+  }
+
   function clearCanvas() {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(5, 5, drawCanvas.width - 10, drawCanvas.height - 10);
-    canvasTexture.needsUpdate = true;
+    clearCanvasContext(ctx, canvasTexture);
     State.p1State.prevX = null;
     State.p1State.prevZ = null;
+  }
+
+  function clearTeamCanvas(room) {
+    if (room === 'teamA' && teamCtxA && teamTextureA) {
+      clearCanvasContext(teamCtxA, teamTextureA);
+    } else if (room === 'teamB' && teamCtxB && teamTextureB) {
+      clearCanvasContext(teamCtxB, teamTextureB);
+    }
+  }
+
+  function setActiveDrawingBoardTexture(room = 'MAIN') {
+    activeBoardRoom = room;
+    if (!drawingBoard || !drawingBoard.material || !drawingBoard.material[2]) return;
+    if (room === 'teamA' && teamTextureA) {
+      drawingBoard.material[2].map = teamTextureA;
+    } else if (room === 'teamB' && teamTextureB) {
+      drawingBoard.material[2].map = teamTextureB;
+    } else {
+      drawingBoard.material[2].map = canvasTexture;
+    }
+    drawingBoard.material[2].needsUpdate = true;
+  }
+
+  function getTeamCanvasDataURL(room) {
+    if (room === 'teamA' && teamCanvasA) return teamCanvasA.toDataURL('image/png');
+    if (room === 'teamB' && teamCanvasB) return teamCanvasB.toDataURL('image/png');
+    return drawCanvas ? drawCanvas.toDataURL('image/png') : '';
+  }
+
+  function paintStrokeOnTeamBoard(room, x, z, prevX, prevZ, colorHex, brushSizeIdx = 1) {
+    const targetCtx = room === 'teamA' ? teamCtxA : room === 'teamB' ? teamCtxB : ctx;
+    const targetTex = room === 'teamA' ? teamTextureA : room === 'teamB' ? teamTextureB : canvasTexture;
+    if (!targetCtx) return;
+
+    const CANVAS_SIZE = Config.CANVAS_SIZE;
+    const px = ((x + CANVAS_SIZE / 2) / CANVAS_SIZE) * 1024;
+    const py = ((z - (2.2 - CANVAS_SIZE / 2)) / CANVAS_SIZE) * 1024;
+
+    const brushConfig = Config.BRUSH_SIZES[brushSizeIdx] || Config.BRUSH_SIZES[1];
+    const radius = brushConfig.radius || 20;
+
+    targetCtx.beginPath();
+    targetCtx.strokeStyle = colorHex || '#ec4899';
+    targetCtx.lineWidth = radius * 2;
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+
+    if (prevX !== null && prevZ !== null) {
+      const ppx = ((prevX + CANVAS_SIZE / 2) / CANVAS_SIZE) * 1024;
+      const ppy = ((prevZ - (2.2 - CANVAS_SIZE / 2)) / CANVAS_SIZE) * 1024;
+      targetCtx.moveTo(ppx, ppy);
+      targetCtx.lineTo(px, py);
+      targetCtx.stroke();
+    } else {
+      targetCtx.arc(px, py, radius, 0, Math.PI * 2);
+      targetCtx.fillStyle = colorHex || '#ec4899';
+      targetCtx.fill();
+    }
+    if (targetTex) targetTex.needsUpdate = true;
+  }
+
+  // 👥 관전자 / 대기자 3D 캐릭터 실시간 동기화
+  function syncSpectatorCharacters(roster = State.playerRoster) {
+    if (!scene) return;
+    const myId = State.isP2PConnected ? State.myPeerId : 'local-1';
+    const validIds = new Set();
+
+    (roster || []).forEach(p => {
+      // 1P / 2P가 아니거나, 대기방 상태일 때 대기 라운지에 캐릭터 배치
+      const isIngamePainter = (State.gameState === 'PLAYING' || State.gameState === 'CHOOSING_WORD') &&
+                              (p.role === 'P1' || p.role === 'P2');
+      const isSpectator = !isIngamePainter;
+
+      if (isSpectator) {
+        validIds.add(p.id);
+        const isMe = p.id === myId;
+        let char = spectatorChars.get(p.id);
+
+        if (!char) {
+          const cColor = p.custom?.color || (isMe ? State.myCustom.color : '#8b5cf6');
+          char = createJellyCharacter(cColor, 'SPECTATOR', p.custom || State.myCustom);
+
+          // 대기 라운지 바닥 위(z: 10.2 ~ 12.2, x: -8 ~ 8)에 고르게 배치
+          const count = spectatorChars.size;
+          const initX = isMe ? 0 : ((count % 6) - 2.5) * 2.4;
+          const initZ = 10.8 + ((count % 2) * 1.0);
+          char.group.position.set(initX, 0, initZ);
+          char.userData = { id: p.id, vx: 0, vz: 0, vy: 0, y: 0 };
+
+          const nameTag = createNameTagSprite(p.nickname || '관전자', isMe, isMe ? '나' : '대기');
+          char.nameTagSprite = nameTag;
+          char.group.add(nameTag);
+
+          if (char.youMarker) {
+            char.youMarker.visible = isMe;
+          }
+
+          scene.add(char.group);
+          spectatorChars.set(p.id, char);
+        } else {
+          applyCharacterCustomization(char, p.custom || State.myCustom);
+          if (char.youMarker) {
+            char.youMarker.visible = isMe;
+          }
+        }
+      }
+    });
+
+    // 퇴장한 인원 캐릭터 정리
+    for (const [id, char] of spectatorChars.entries()) {
+      if (!validIds.has(id)) {
+        scene.remove(char.group);
+        disposeObject3D(char.group);
+        spectatorChars.delete(id);
+      }
+    }
+  }
+
+  function updateSpectatorPosition(id, x, z, y = 0, vx = 0, vz = 0, vy = 0) {
+    const char = spectatorChars.get(id);
+    if (!char) return;
+    char.group.position.x = x;
+    char.group.position.z = z;
+    char.group.position.y = y;
+    char.userData.vx = vx;
+    char.userData.vz = vz;
+    char.userData.vy = vy;
+    char.userData.y = y;
+  }
+
+  // 🎬 상대 팀 그림 맞추기 시 1P/2P 이동 입력 리플레이 실행 헬퍼
+  function playReplayAction(action, room = null) {
+    if (!action) return;
+    const targetCtx = room === 'teamA' ? teamCtxA : room === 'teamB' ? teamCtxB : ctx;
+    const targetTex = room === 'teamA' ? teamTextureA : room === 'teamB' ? teamTextureB : canvasTexture;
+
+    if (action.p1 && p1Obj) {
+      p1Obj.group.position.set(action.p1.x, action.p1.y || 0, action.p1.z);
+      State.p1State.vx = action.p1.vx || 0;
+      State.p1State.vz = action.p1.vz || 0;
+      State.p1State.y = action.p1.y || 0;
+    }
+    if (action.p2 && p2Obj) {
+      p2Obj.group.position.set(action.p2.x, action.p2.y || 0, action.p2.z);
+      State.p2State.vx = action.p2.vx || 0;
+      State.p2State.vz = action.p2.vz || 0;
+      State.p2State.y = action.p2.y || 0;
+    }
+
+    State.isPenDown = Boolean(action.isPenDown);
+    if (action.colorHex) State.activeColorHex = action.colorHex;
+    if (typeof action.brushSizeIdx === 'number') State.brushSizeIdx = action.brushSizeIdx;
+
+    if (action.drawStroke && targetCtx) {
+      const { fromX, fromZ, toX, toZ, color, size } = action.drawStroke;
+      const CANVAS_SIZE = Config.CANVAS_SIZE;
+      const px1 = ((fromX + CANVAS_SIZE / 2) / CANVAS_SIZE) * 1024;
+      const py1 = ((fromZ - (2.2 - CANVAS_SIZE / 2)) / CANVAS_SIZE) * 1024;
+      const px2 = ((toX + CANVAS_SIZE / 2) / CANVAS_SIZE) * 1024;
+      const py2 = ((toZ - (2.2 - CANVAS_SIZE / 2)) / CANVAS_SIZE) * 1024;
+
+      targetCtx.beginPath();
+      targetCtx.strokeStyle = color || '#ec4899';
+      targetCtx.lineWidth = size || 20;
+      targetCtx.lineCap = 'round';
+      targetCtx.lineJoin = 'round';
+      targetCtx.moveTo(px1, py1);
+      targetCtx.lineTo(px2, py2);
+      targetCtx.stroke();
+      if (targetTex) targetTex.needsUpdate = true;
+    }
   }
 
   function loadCanvasFromDataURL(dataUrl) {
@@ -1006,7 +1283,7 @@ window.BanBan.Scene3D = (function () {
     }
 
     // 5) 머리 위 'YOU' 화살표 마커 부착
-    const youMarker = createYouMarker(roleType === 'P2' ? 'P2' : 'P1');
+    const youMarker = createYouMarker(roleType);
     root.add(youMarker);
 
     // 6) 2P 전용: 발판 밟을 때 머리 위에 뜨는 실시간 말풍선 스프라이트
@@ -1026,6 +1303,26 @@ window.BanBan.Scene3D = (function () {
       stepBubble = { sprite: bSprite, canvas: bCanvas, tex: bTex, lastKey: '' };
     }
 
+    // 7) 1P ↔ 2P 비밀 협동 이모티콘 말풍선 스프라이트 (1P, 2P 모두 생성)
+    const eCanvas = document.createElement('canvas');
+    eCanvas.width = 360;
+    eCanvas.height = 100;
+    const eTex = new THREE.CanvasTexture(eCanvas);
+    const eMat = new THREE.SpriteMaterial({ map: eTex, transparent: true, depthTest: false });
+    const eSprite = new THREE.Sprite(eMat);
+    eSprite.scale.set(2.9, 0.82, 1);
+    eSprite.position.set(0, 3.5, 0);
+    eSprite.renderOrder = 1010;
+    eSprite.visible = false;
+    root.add(eSprite);
+    const emoteBubble = {
+      sprite: eSprite,
+      canvas: eCanvas,
+      tex: eTex,
+      timer: 0,
+      maxTimer: 2.5
+    };
+
     const charObj = {
       group: root,
       animGroup,
@@ -1040,6 +1337,7 @@ window.BanBan.Scene3D = (function () {
       tipMat,
       youMarker,
       stepBubble,
+      emoteBubble,
       targetAngle: 0
     };
 
@@ -1132,6 +1430,27 @@ window.BanBan.Scene3D = (function () {
       charObj.stepBubble.sprite.position.y = baseY + Math.sin(elapsedTime * 8) * 0.10;
     }
 
+    // 1P ↔ 2P 비밀 이모티콘 말풍선 애니메이션 (떠오름 + 바운스 + 페이드아웃)
+    if (charObj.emoteBubble && charObj.emoteBubble.sprite.visible) {
+      charObj.emoteBubble.timer -= 0.016 * dtScale;
+      const progress = Math.max(0, 1 - (charObj.emoteBubble.timer / charObj.emoteBubble.maxTimer));
+      const bounce = Math.sin(progress * Math.PI) * 0.22;
+      const isStepVisible = charObj.stepBubble && charObj.stepBubble.sprite.visible;
+      const isYouVisible = charObj.youMarker && charObj.youMarker.visible;
+      const baseY = isStepVisible ? 4.15 : (isYouVisible ? 3.48 : 2.45);
+      charObj.emoteBubble.sprite.position.y = baseY + progress * 0.45 + bounce;
+
+      if (charObj.emoteBubble.timer < 0.5) {
+        charObj.emoteBubble.sprite.material.opacity = Math.max(0, charObj.emoteBubble.timer / 0.5);
+      } else {
+        charObj.emoteBubble.sprite.material.opacity = 1;
+      }
+
+      if (charObj.emoteBubble.timer <= 0) {
+        charObj.emoteBubble.sprite.visible = false;
+      }
+    }
+
     if (charObj.brushPivot) {
       const targetPitch = isPenActive ? 0.55 : -0.45;
       const targetY = isPenActive ? 0.52 : 0.85;
@@ -1210,6 +1529,21 @@ window.BanBan.Scene3D = (function () {
     }
   }
 
+  function clearCoopPings() {
+    coopPings.forEach(p => {
+      scene.remove(p.group);
+      if (p.ringMat) p.ringMat.dispose();
+      if (p.colMat) p.colMat.dispose();
+      if (p.sprite && p.sprite.material) {
+        if (p.sprite.material.map) p.sprite.material.map.dispose();
+        p.sprite.material.dispose();
+      }
+    });
+    coopPings.length = 0;
+    if (p1Obj?.emoteBubble) p1Obj.emoteBubble.sprite.visible = false;
+    if (p2Obj?.emoteBubble) p2Obj.emoteBubble.sprite.visible = false;
+  }
+
   function clearConfetti() {
     confettiParticles.forEach(p => {
       scene.remove(p.mesh);
@@ -1226,6 +1560,7 @@ window.BanBan.Scene3D = (function () {
       if (r.mat) r.mat.dispose();
     });
     padRipples.length = 0;
+    clearCoopPings();
   }
 
   function updateParticles(dtScale = 1) {
@@ -1274,6 +1609,36 @@ window.BanBan.Scene3D = (function () {
         p.vx *= groundFriction;
         p.vz *= groundFriction;
         p.vy = 0;
+      }
+    }
+
+    // 1P ↔ 2P 비밀 핑 마커 애니메이션 (바닥 링 펄스 + 기둥 회전 + 페이드아웃)
+    for (let i = coopPings.length - 1; i >= 0; i--) {
+      const ping = coopPings[i];
+      ping.life -= 0.016 * dtScale;
+      const progress = Math.max(0, 1 - (ping.life / ping.maxLife));
+
+      // 바닥 링 확장 및 투명도 감소
+      const ringScale = 1.0 + progress * 2.6;
+      ping.ringMesh.scale.set(ringScale, ringScale, 1);
+      ping.ringMat.opacity = Math.max(0, 0.95 * (1 - progress));
+
+      // 기둥 천천히 회전
+      ping.colMesh.rotation.y += 0.04 * dtScale;
+      ping.colMat.opacity = Math.max(0, 0.75 * (1 - progress * 0.7));
+
+      // 상단 스프라이트 위아래 둥실 호버링
+      ping.sprite.position.y = 2.35 + Math.sin(progress * 15) * 0.12;
+
+      if (ping.life <= 0) {
+        scene.remove(ping.group);
+        ping.ringMat.dispose();
+        ping.colMat.dispose();
+        if (ping.sprite && ping.sprite.material) {
+          if (ping.sprite.material.map) ping.sprite.material.map.dispose();
+          ping.sprite.material.dispose();
+        }
+        coopPings.splice(i, 1);
       }
     }
   }
@@ -1353,6 +1718,17 @@ window.BanBan.Scene3D = (function () {
       renderer.render(scene, camera);
     }
 
+    // ☕ 하단 대기 라운지 관전자 / 대기자 3D 캐릭터 애니메이션 루프
+    if (spectatorChars && spectatorChars.size > 0) {
+      spectatorChars.forEach(char => {
+        const vx = char.userData?.vx || 0;
+        const vz = char.userData?.vz || 0;
+        const y = char.userData?.y || 0;
+        const vy = char.userData?.vy || 0;
+        updateCharacterVisuals(char, vx, vz, elapsedTime, false, dtScale, y, vy);
+      });
+    }
+
     // 대기화면(Entry Lobby)이 열려 있을 때 3D 클로즈업 프리뷰 캐릭터도 회전/바운스 렌더링
     if (previewRenderer && previewScene && previewCamera && previewCharObj) {
       const entryModal = document.getElementById('entry-screen');
@@ -1420,6 +1796,109 @@ window.BanBan.Scene3D = (function () {
     tex.needsUpdate = true;
   }
 
+  // 1P / 2P 머리 위에 협동 이모티콘 말풍선 띄우기
+  function showCharacterEmote(roleType, emoteId) {
+    const char = (roleType === 'P2') ? p2Obj : p1Obj;
+    if (!char || !char.emoteBubble) return;
+
+    const emoteDef = (Config.COOP_EMOTES || []).find(e => e.id === emoteId) || {
+      icon: '💬',
+      text: emoteId || '신호!'
+    };
+
+    const { sprite, canvas, tex } = char.emoteBubble;
+    const c = canvas.getContext('2d');
+    c.clearRect(0, 0, canvas.width, canvas.height);
+
+    const r = 24;
+    const x = 8, y = 8, w = canvas.width - 16, h = canvas.height - 16;
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+
+    c.fillStyle = roleType === 'P2' ? 'rgba(6, 182, 212, 0.95)' : 'rgba(236, 72, 153, 0.95)';
+    c.fill();
+    c.lineWidth = 5;
+    c.strokeStyle = '#ffffff';
+    c.stroke();
+
+    c.font = '900 32px Jua, Tossface, Apple Color Emoji, Segoe UI Emoji, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = '#ffffff';
+    c.fillText(`${emoteDef.icon} ${emoteDef.text}`, canvas.width / 2, canvas.height / 2 + 2);
+    tex.needsUpdate = true;
+
+    char.emoteBubble.timer = 2.4;
+    char.emoteBubble.maxTimer = 2.4;
+    if (sprite.material) sprite.material.opacity = 1;
+    sprite.visible = true;
+
+    // 캐릭터 깜짝 바운스 반응
+    if (char.animGroup) {
+      char.animGroup.position.y = 0.32;
+    }
+  }
+
+  // 1P ↔ 2P 비밀 3D 핑 마커 스폰
+  function spawnCoopPing(x, z, label = '핑!', isPad = false) {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    // 1) 바닥 펄스 링
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: isPad ? 0xf59e0b : 0x06b6d4,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide
+    });
+    const ringMesh = new THREE.Mesh(pingRingGeo, ringMat);
+    ringMesh.position.y = 0.05;
+    group.add(ringMesh);
+
+    // 2) 수직 빔 기둥
+    const colMat = new THREE.MeshBasicMaterial({
+      color: isPad ? 0xfbbf24 : 0x38bdf8,
+      transparent: true,
+      opacity: 0.75
+    });
+    const colMesh = new THREE.Mesh(pingColumnGeo, colMat);
+    colMesh.position.y = 1.0;
+    group.add(colMesh);
+
+    // 3) 상단 라벨 스프라이트
+    const sprite = createTextSprite(
+      label,
+      isPad ? '#f59e0b' : '#0284c7',
+      '#ffffff',
+      '#ffffff',
+      2.7,
+      0.72
+    );
+    sprite.position.y = 2.35;
+    group.add(sprite);
+
+    scene.add(group);
+    coopPings.push({
+      group,
+      ringMesh,
+      ringMat,
+      colMesh,
+      colMat,
+      sprite,
+      life: 3.2,
+      maxLife: 3.2
+    });
+  }
+
   return {
     initScene,
     clearCanvas,
@@ -1428,6 +1907,9 @@ window.BanBan.Scene3D = (function () {
     syncRosterCustomizations,
     updateYouMarkersVisibility,
     updateP2StepBubble,
+    showCharacterEmote,
+    spawnCoopPing,
+    clearCoopPings,
     updateCharacterVisuals,
     spawnPaintSplatter,
     spawnPadRipple,
@@ -1436,6 +1918,17 @@ window.BanBan.Scene3D = (function () {
     updateParticles,
     paintStrokeOnBoard,
     renderFrame,
+
+    // 👥 팀 모드 & 하단 대기 라운지 확장 함수
+    syncSpectatorCharacters,
+    updateSpectatorPosition,
+    clearTeamCanvas,
+    setActiveDrawingBoardTexture,
+    getTeamCanvasDataURL,
+    paintStrokeOnTeamBoard,
+    playReplayAction,
+    getSpectatorChars: () => spectatorChars,
+
     getSceneObjects: () => ({
       scene,
       camera,
@@ -1444,7 +1937,9 @@ window.BanBan.Scene3D = (function () {
       drawingBoard,
       p1Obj,
       p2Obj,
-      padMeshes
+      padMeshes,
+      teamCanvasA,
+      teamCanvasB
     })
   };
 })();
