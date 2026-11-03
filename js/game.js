@@ -697,6 +697,7 @@ function initGameApp() {
     updatePromptVisibility();
     Scene3D.updateYouMarkersVisibility();
     Scene3D.syncRosterCustomizations();
+    if (Scene3D.syncSpectatorCharacters) Scene3D.syncSpectatorCharacters(State.playerRoster);
     Scene3D.clearCanvas();
     Scene3D.clearConfetti();
 
@@ -893,6 +894,7 @@ function initGameApp() {
     updatePromptVisibility();
     Scene3D.updateYouMarkersVisibility();
     Scene3D.syncRosterCustomizations();
+    if (Scene3D.syncSpectatorCharacters) Scene3D.syncSpectatorCharacters(State.playerRoster);
     Network.updateCoopUIVisibility();
 
     Scene3D.clearCanvas();
@@ -1736,6 +1738,7 @@ function initGameApp() {
   // 최초 접속 시 대기화면(LOBBY) 상태 세팅
   if (p1Obj?.group) p1Obj.group.position.set(0, 0, 2.2);
   if (p2Obj?.group) p2Obj.group.position.set(0.0, 0, -8.6);
+  if (Scene3D.syncSpectatorCharacters) Scene3D.syncSpectatorCharacters(State.playerRoster);
   updateRoundBadge();
   updateTimerDisplay('대기중');
   updatePromptVisibility();
@@ -1928,13 +1931,11 @@ function initGameApp() {
     const myEntry = State.playerRoster.find(p => p.id === myId);
     const myRole = myEntry?.role || 'P1';
 
-    const isControllingBoard = (State.gameState === 'PLAYING') &&
-      ((State.controlMode === 'P1' && myRole === 'P1') ||
-       (State.controlMode === 'P2' && myRole === 'P2') ||
-       (State.controlMode === 'BOTH'));
-    const isSpectatorOrWaiting = !isControllingBoard || State.gameState === 'WAITING' || State.gameState === 'LOBBY';
+    // 1P(그림 그리는 사람)와 2P(팔레트)는 절대 관전자 영역에 있으면 안 됨!
+    // 관전자 이동은 오직 실제 관전자/구경꾼(SPECTATOR)일 때만 동작
+    const isSpectator = (myRole === 'SPECTATOR') || (State.controlMode === 'SPECTATOR');
 
-    if (isSpectatorOrWaiting && !State.isTypingChat) {
+    if (isSpectator && !State.isTypingChat) {
       let sx = 0, sz = 0;
       if (keys['KeyW'] || keys['ArrowUp']) sz -= 1;
       if (keys['KeyS'] || keys['ArrowDown']) sz += 1;
@@ -1953,72 +1954,72 @@ function initGameApp() {
       }
     }
 
-    // 관전자 중력 및 마찰력 계산
-    if (State.spectatorState.y > 0 || State.spectatorState.vy !== 0) {
-      State.spectatorState.y += State.spectatorState.vy * dtScale;
-      State.spectatorState.vy -= State.spectatorState.gravity * dtScale;
-      if (State.spectatorState.y <= 0) {
-        State.spectatorState.y = 0;
-        State.spectatorState.vy = 0;
+    // 관전자 중력 및 마찰력 계산 (관전자 모드일 때만)
+    if (isSpectator) {
+      if (State.spectatorState.y > 0 || State.spectatorState.vy !== 0) {
+        State.spectatorState.y += State.spectatorState.vy * dtScale;
+        State.spectatorState.vy -= State.spectatorState.gravity * dtScale;
+        if (State.spectatorState.y <= 0) {
+          State.spectatorState.y = 0;
+          State.spectatorState.vy = 0;
+        }
       }
-    }
-    const fs = Math.pow(State.spectatorState.friction, dtScale);
-    State.spectatorState.vx *= fs;
-    State.spectatorState.vz *= fs;
+      const fs = Math.pow(State.spectatorState.friction, dtScale);
+      State.spectatorState.vx *= fs;
+      State.spectatorState.vz *= fs;
 
-    State.mySpectatorPos.x += State.spectatorState.vx * dtScale;
-    State.mySpectatorPos.z += State.spectatorState.vz * dtScale;
-    State.mySpectatorPos.y = State.spectatorState.y;
+      State.mySpectatorPos.x += State.spectatorState.vx * dtScale;
+      State.mySpectatorPos.z += State.spectatorState.vz * dtScale;
+      State.mySpectatorPos.y = State.spectatorState.y;
 
-    // 대기 라운지 바운더리 클램핑 (x: -9.4 ~ 9.4, z: 9.4 ~ 12.6)
-    State.mySpectatorPos.x = Math.max(-9.4, Math.min(9.4, State.mySpectatorPos.x));
-    State.mySpectatorPos.z = Math.max(9.4, Math.min(12.6, State.mySpectatorPos.z));
+      // 대기 라운지 바운더리 클램핑 (x: -9.4 ~ 9.4, z: 9.4 ~ 12.6)
+      State.mySpectatorPos.x = Math.max(-9.4, Math.min(9.4, State.mySpectatorPos.x));
+      State.mySpectatorPos.z = Math.max(9.4, Math.min(12.6, State.mySpectatorPos.z));
 
-    if (Scene3D.updateSpectatorPosition) {
-      Scene3D.updateSpectatorPosition(
-        myId,
-        State.mySpectatorPos.x,
-        State.mySpectatorPos.z,
-        State.mySpectatorPos.y,
-        State.spectatorState.vx,
-        State.spectatorState.vz,
-        State.spectatorState.vy
-      );
-    }
+      if (Scene3D.updateSpectatorPosition) {
+        Scene3D.updateSpectatorPosition(
+          myId,
+          State.mySpectatorPos.x,
+          State.mySpectatorPos.z,
+          State.mySpectatorPos.y,
+          State.spectatorState.vx,
+          State.spectatorState.vz,
+          State.spectatorState.vy
+        );
+      }
 
-    if (Math.hypot(State.spectatorState.vx, State.spectatorState.vz) > 0.001 || State.spectatorState.y > 0.001) {
-      Network.sendNetworkPacket({
-        type: 'MOVE_SPECTATOR',
-        id: myId,
-        x: State.mySpectatorPos.x,
-        z: State.mySpectatorPos.z,
-        y: State.mySpectatorPos.y,
-        vx: State.spectatorState.vx,
-        vz: State.spectatorState.vz,
-        vy: State.spectatorState.vy
-      });
+      if (Math.hypot(State.spectatorState.vx, State.spectatorState.vz) > 0.001 || State.spectatorState.y > 0.001) {
+        Network.sendNetworkPacket({
+          type: 'MOVE_SPECTATOR',
+          id: myId,
+          x: State.mySpectatorPos.x,
+          z: State.mySpectatorPos.z,
+          y: State.mySpectatorPos.y,
+          vx: State.spectatorState.vx,
+          vz: State.spectatorState.vz,
+          vy: State.spectatorState.vy
+        });
+      }
     }
 
     if (State.gameState === 'PLAYING') {
       const { p1State, p2State } = State;
 
-      // --- 1P & 2P 조작키 WASD 통일 (Enter 채팅 중일 땐 이동 정지!) ---
       const isWasdHeld = !State.isTypingChat && Boolean(keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
       const isArrowHeld = !State.isTypingChat && Boolean(keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight']);
 
-      const p1UsesWasd = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && myAssignedRole !== 'P2');
-      const p1UsesArrows = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && myAssignedRole === 'P2');
+      // 로컬(BOTH) 모드에서는 1P(WASD)와 2P(방향키)를 완전히 분리
+      // 멀티(P1 / P2) 모드에서는 1인 1캐릭터 조작이므로 사용자 편의에 맞게 WASD / 방향키 둘 다 지원
+      const isLocalBoth = State.controlMode === 'BOTH';
 
-      const p2UsesWasd = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && myAssignedRole === 'P2');
-      const p2UsesArrows = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && myAssignedRole !== 'P2');
-
+      // --- 1P 브러시 러너 이동 및 점프 ---
       if ((State.controlMode === 'BOTH' || State.controlMode === 'P1') && !State.isTypingChat) {
         let ix1 = 0;
         let iz1 = 0;
-        const p1Up = (p1UsesWasd && keys['KeyW']) || (p1UsesArrows && keys['ArrowUp']);
-        const p1Down = (p1UsesWasd && keys['KeyS']) || (p1UsesArrows && keys['ArrowDown']);
-        const p1Left = (p1UsesWasd && keys['KeyA']) || (p1UsesArrows && keys['ArrowLeft']);
-        const p1Right = (p1UsesWasd && keys['KeyD']) || (p1UsesArrows && keys['ArrowRight']);
+        const p1Up    = keys['KeyW'] || (!isLocalBoth && keys['ArrowUp']);
+        const p1Down  = keys['KeyS'] || (!isLocalBoth && keys['ArrowDown']);
+        const p1Left  = keys['KeyA'] || (!isLocalBoth && keys['ArrowLeft']);
+        const p1Right = keys['KeyD'] || (!isLocalBoth && keys['ArrowRight']);
 
         if (p1Up)    { iz1 -= 1; pointerTarget = null; }
         if (p1Down)  { iz1 += 1; pointerTarget = null; }
@@ -2041,8 +2042,8 @@ function initGameApp() {
           }
         }
 
-        // 스페이스바 점프: 내 주 조작 캐릭터(WASD 대상) 우선 점프
-        const shouldP1Jump = State.controlMode === 'P1' || (State.controlMode === 'BOTH' && ((p1UsesWasd && (isWasdHeld || !isArrowHeld)) || (p1UsesArrows && isArrowHeld && !isWasdHeld)));
+        // 스페이스바 점프: 멀티(P1) 모드이거나, 로컬(BOTH)에서 방향키만 단독으로 누르고 있지 않을 때 1P 점프
+        const shouldP1Jump = State.controlMode === 'P1' || (isLocalBoth && (isWasdHeld || !isArrowHeld));
         if (keys['Space'] && shouldP1Jump && p1State.y <= 0.001 && p1State.vy <= 0) {
           p1State.vy = p1State.jumpForce;
           if (Sound) Sound.playJump(false);
@@ -2088,14 +2089,14 @@ function initGameApp() {
         }
       }
 
-      // --- 2P 팔레트 엔지니어 이동 및 점프 (WASD로 통일 + Enter 채팅 중엔 이동 정지) ---
+      // --- 2P 팔레트 엔지니어 이동 및 점프 ---
       if ((State.controlMode === 'BOTH' || State.controlMode === 'P2') && !State.isTypingChat) {
         let ix2 = 0;
         let iz2 = 0;
-        const p2Up = (p2UsesWasd && keys['KeyW']) || (p2UsesArrows && keys['ArrowUp']);
-        const p2Down = (p2UsesWasd && keys['KeyS']) || (p2UsesArrows && keys['ArrowDown']);
-        const p2Left = (p2UsesWasd && keys['KeyA']) || (p2UsesArrows && keys['ArrowLeft']);
-        const p2Right = (p2UsesWasd && keys['KeyD']) || (p2UsesArrows && keys['ArrowRight']);
+        const p2Up    = keys['ArrowUp']    || (!isLocalBoth && keys['KeyW']);
+        const p2Down  = keys['ArrowDown']  || (!isLocalBoth && keys['KeyS']);
+        const p2Left  = keys['ArrowLeft']  || (!isLocalBoth && keys['KeyA']);
+        const p2Right = keys['ArrowRight'] || (!isLocalBoth && keys['KeyD']);
 
         if (p2Up)    iz2 -= 1;
         if (p2Down)  iz2 += 1;
@@ -2108,8 +2109,8 @@ function initGameApp() {
           p2State.vz += (iz2 / len2) * p2State.accel * dtScale;
         }
 
-        // 스페이스바 점프: 내 주 조작 캐릭터(WASD 대상) 우선 점프
-        const shouldP2Jump = State.controlMode === 'P2' || (State.controlMode === 'BOTH' && ((p2UsesWasd && (isWasdHeld || !isArrowHeld)) || (p2UsesArrows && isArrowHeld && !isWasdHeld)));
+        // 스페이스바 점프: 멀티(P2) 모드이거나, 로컬(BOTH)에서 WASD만 단독으로 누르고 있지 않을 때 2P 점프
+        const shouldP2Jump = State.controlMode === 'P2' || (isLocalBoth && (isArrowHeld || !isWasdHeld));
         if (keys['Space'] && shouldP2Jump && p2State.y <= 0.001 && p2State.vy <= 0) {
           p2State.vy = p2State.jumpForce;
           if (Sound) Sound.playJump(true);

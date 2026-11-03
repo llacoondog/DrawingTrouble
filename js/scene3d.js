@@ -968,8 +968,8 @@ window.BanBan.Scene3D = (function () {
       p1Obj.youMarker.visible = false;
       p2Obj.youMarker.visible = true;
     } else if (State.controlMode === 'BOTH') {
-      p1Obj.youMarker.visible = myRole !== 'P2';
-      p2Obj.youMarker.visible = myRole === 'P2';
+      p1Obj.youMarker.visible = true;
+      p2Obj.youMarker.visible = true;
     } else {
       p1Obj.youMarker.visible = false;
       p2Obj.youMarker.visible = false;
@@ -1071,10 +1071,9 @@ window.BanBan.Scene3D = (function () {
     const validIds = new Set();
 
     (roster || []).forEach(p => {
-      // 1P / 2P가 아니거나, 대기방 상태일 때 대기 라운지에 캐릭터 배치
-      const isIngamePainter = (State.gameState === 'PLAYING' || State.gameState === 'CHOOSING_WORD') &&
-                              (p.role === 'P1' || p.role === 'P2');
-      const isSpectator = !isIngamePainter;
+      // 1P(브러시 러너, 실제 그림을 그리는 사람)와 2P(팔레트 엔지니어)는 절대 관전자 영역에 배치하지 않음!
+      // 오직 순수 관전자/구경꾼(role === 'SPECTATOR')만 하단 대기 라운지에 배치
+      const isSpectator = p.role === 'SPECTATOR';
 
       if (isSpectator) {
         validIds.add(p.id);
